@@ -1,8 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>OneWall â€” Vase-Mode Bin & Container Customizer</title>
+<title>OneWall — Vase-Mode Bin & Container Customizer</title>
 <style>
   :root {
     --bg: #1a1a1d;
@@ -18,7 +18,7 @@
                font-family: system-ui, sans-serif; }
   #app { position: fixed; inset: 0; }
 
-  /* â”€â”€ Header bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Header bar ─────────────────────────────────────── */
   #header {
     position: fixed; top: 0; left: 0; right: 0; z-index: 20;
     display: flex; align-items: center; justify-content: space-between;
@@ -53,7 +53,7 @@
     min-width: 44px; font-variant: small-caps;
   }
 
-  /* â”€â”€ Overlays (stats / hint) â€” kept clear of header â”€â”€ */
+  /* ── Overlays (stats / hint) — kept clear of header ── */
   #stats { position: fixed; top: 56px; left: 12px; color: var(--muted);
            font-size: 11px; font-family: ui-monospace, monospace;
            background: rgba(0,0,0,.4); padding: 3px 8px; border-radius: 4px;
@@ -72,7 +72,7 @@
   #sig-badge.off { opacity: 0.35; }
   #sig-badge .label { color: var(--accent); }
 
-  /* â”€â”€ Modal (<dialog>) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Modal (<dialog>) ───────────────────────────────── */
   dialog.ow-modal {
     background: var(--modal-bg); color: var(--fg);
     border: 1px solid var(--border); border-radius: 10px;
@@ -131,7 +131,7 @@
     color: var(--muted); font-style: italic; font-size: 12px;
   }
 
-  /* About modal â€” avatar + identity header */
+  /* About modal — avatar + identity header */
   .about-identity {
     display: flex; align-items: center; gap: 16px; margin-bottom: 4px;
   }
@@ -150,13 +150,13 @@
   .about-real   { color: var(--fg); font-size: 14px; }
   .about-loc    { color: var(--muted); font-size: 12px; }
 
-  /* â”€â”€ RTL flip when lang = he â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── RTL flip when lang = he ────────────────────────── */
   html[dir="rtl"] #header { direction: rtl; }
   html[dir="rtl"] .ow-modal { direction: rtl; }
   html[dir="rtl"] #stats, html[dir="rtl"] #hint { left: auto; right: 12px; }
 
-  /* â”€â”€ Push lil-gui below the header so it never covers the
-        Help / About / Lang buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Push lil-gui below the header so it never covers the
+        Help / About / Lang buttons ──────────────────────── */
   .lil-gui.root {
     top: 56px !important;
     max-height: calc(100vh - 64px);
@@ -173,7 +173,7 @@
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Bin & Container Customizer</span>
-    <span class="ver">·0618-182719</span>
+    <span class="ver">v0.1-0618-194515</span>
   </div>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
@@ -182,10 +182,10 @@
   </nav>
 </header>
 
-<!-- â”€â”€â”€â”€â”€ Help modal (filled in Phase 2 with full param docs) â”€â”€â”€â”€â”€ -->
+<!-- ───── Help modal (filled in Phase 2 with full param docs) ───── -->
 <dialog id="modal-help" class="ow-modal">
   <header>
-    <h2 data-i18n="help.title">Help â€” Parameters & Usage</h2>
+    <h2 data-i18n="help.title">Help — Parameters & Usage</h2>
     <button class="close" aria-label="Close">&times;</button>
   </header>
   <div class="ow-body">
@@ -199,7 +199,7 @@
     <h3 data-i18n="help.sections_title">The three height sections</h3>
     <p data-i18n="help.sections">
       Every bin is divided into a LOW section (base transition), a MID
-      section (the main wall â€” vertical profile + texture) and a HIGH
+      section (the main wall — vertical profile + texture) and a HIGH
       section (the lip / rim). Each has its own controls.
     </p>
 
@@ -211,7 +211,7 @@
   </div>
 </dialog>
 
-<!-- â”€â”€â”€â”€â”€ About modal (bio + links) â”€â”€â”€â”€â”€ -->
+<!-- ───── About modal (bio + links) ───── -->
 <dialog id="modal-about" class="ow-modal">
   <header>
     <h2 data-i18n="about.title">About OneWall</h2>
@@ -242,10 +242,10 @@
       <a href="https://github.com/amitkuzi/OneWall"   target="_blank" rel="noopener">OneWall repo</a>
     </div>
 
-    <h3>âš  Slicer settings â€” required for the bottom signature</h3>
+    <h3>⚠ Slicer settings — required for the bottom signature</h3>
     <p>
       The <code>@Amitkuzi</code> engraving is one layer deep (0.2 mm).
-      In your slicer set <strong>Bottom shell layers â‰¥ 2</strong>
+      In your slicer set <strong>Bottom shell layers ≥ 2</strong>
       (recommended: 3). With only 1 bottom shell layer the engraving
       punches through the floor and is visible from inside the bin.
       With 2+ bottom layers it's hidden inside the bottom and visible
@@ -257,18 +257,18 @@
       </tr>
       <tr>
         <td>Bambu Studio</td>
-        <td>Strength â†’ Spiral vase ON, Wall loops 1</td>
-        <td>Strength â†’ Bottom shell layers = 3</td>
+        <td>Strength → Spiral vase ON, Wall loops 1</td>
+        <td>Strength → Bottom shell layers = 3</td>
       </tr>
       <tr>
         <td>PrusaSlicer</td>
-        <td>Layers â†’ Spiral vase ON</td>
+        <td>Layers → Spiral vase ON</td>
         <td>Solid layers / Bottom = 3</td>
       </tr>
       <tr>
         <td>Cura</td>
-        <td>Special Modes â†’ Spiralize Outer Contour ON</td>
-        <td>Shell â†’ Bottom Layers = 3</td>
+        <td>Special Modes → Spiralize Outer Contour ON</td>
+        <td>Shell → Bottom Layers = 3</td>
       </tr>
     </table>
 
@@ -280,13 +280,13 @@
     </p>
 
     <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
-      OneWall Â· ·0618-182719
+      OneWall · v0.1-0618-194515
     </p>
   </div>
 </dialog>
 
-<div id="stats">â€” ready â€”</div>
-<div id="hint">drag = rotate Â· right-drag = pan Â· wheel = zoom</div>
+<div id="stats">— ready —</div>
+<div id="hint">drag = rotate · right-drag = pan · wheel = zoom</div>
 <div id="sig-badge">
   <span class="label">bottom signature:</span>
   <span id="sig-badge-text">@Amitkuzi</span>
@@ -294,7 +294,7 @@
 
 <script>
   // Phase-1 UI wiring: modals + language stub.
-  // The i18n engine itself ships in Phase 2 â€” for now the button just
+  // The i18n engine itself ships in Phase 2 — for now the button just
   // toggles the document direction so the layout flip can be previewed.
   const helpModal  = document.getElementById('modal-help');
   const aboutModal = document.getElementById('modal-about');
@@ -333,13 +333,13 @@ import { FontLoader }     from 'three/addons/loaders/FontLoader.js';
 import { TextGeometry }   from 'three/addons/geometries/TextGeometry.js';
 import { mergeVertices }  from 'three/addons/utils/BufferGeometryUtils.js';
 import GUI                from 'lil-gui';
-// CSG library â€” used at STL export time to subtract the signature
+// CSG library — used at STL export time to subtract the signature
 // from the bin (true engraving, single solid, vase-mode compatible).
 import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-//  PARAMETERS â€” mirror of onewall.scad
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
+//  PARAMETERS — mirror of onewall.scad
+// ════════════════════════════════════════════════════════════
 const P = {
   // Outer
   outer_w: 110, outer_d: 90, height: 120, corner_r: 14,
@@ -361,14 +361,14 @@ const P = {
   lip_ribs: 4, lip_rib_amp: 0.9,
   // Resolution
   point_spacing: 2.2, mesh_layer: 1.4,
-  // Signature engraving (bottom of bin) â€” depth = 1 layer (0.2 mm) by default
+  // Signature engraving (bottom of bin) — depth = 1 layer (0.2 mm) by default
   sig_enabled: true, sig_text: '@Amitkuzi', sig_size: 6, sig_depth: 0.2,
 };
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-//  MATH â€” direct port of OpenSCAD functions
-//  All trig args in OpenSCAD are degrees â†’ multiply by Ï€/180.
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
+//  MATH — direct port of OpenSCAD functions
+//  All trig args in OpenSCAD are degrees → multiply by π/180.
+// ════════════════════════════════════════════════════════════
 const D2R   = Math.PI / 180;
 const clampf = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const lerp   = (a, b, t)   => a + (b - a) * t;
@@ -424,9 +424,9 @@ function baseRing(outer_w, outer_d, corner_r, point_spacing) {
 
 // Section-fade and other helpers depend on current P; defined inside build.
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
 //  GEOMETRY BUILD
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
 function buildGeometry() {
   const ring = baseRing(P.outer_w, P.outer_d, P.corner_r, P.point_spacing);
   const M    = ring.length;
@@ -560,7 +560,7 @@ function buildGeometry() {
       indices[ii++] = I(l+1, k);
     }
   }
-  // Bottom fan (CCW from below â†’ reversed)
+  // Bottom fan (CCW from below → reversed)
   for (let k = 1; k < M - 1; k++) {
     indices[ii++] = 0;
     indices[ii++] = k + 1;
@@ -583,9 +583,9 @@ function buildGeometry() {
   return { geom, verts: L * M, tris: indexCount / 3 };
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
 //  THREE.JS SCENE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
 const canvas = document.getElementById('app');
 const stats  = document.getElementById('stats');
 
@@ -661,7 +661,7 @@ applyLight(keyLight,     L.key);
 applyLight(fillLight,    L.fill);
 applyLight(rimLight,     L.rim);
 
-// Printable group â€” holds the bin and the signature stamp.
+// Printable group — holds the bin and the signature stamp.
 // STL export serializes this whole group (both meshes).
 const printGroup = new THREE.Group();
 scene.add(printGroup);
@@ -670,7 +670,7 @@ let binMesh   = null;
 let sigMesh   = null;
 let svaseFont = null;
 
-// Async font load â€” when ready, trigger a rebuild so the signature appears.
+// Async font load — when ready, trigger a rebuild so the signature appears.
 new FontLoader().load(
   'https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_regular.typeface.json',
   font => { svaseFont = font; scheduleRebuild(); },
@@ -678,7 +678,7 @@ new FontLoader().load(
   () => { stats.textContent += '  [font load failed]'; }
 );
 
-// Build the signature mesh â€” small extruded text positioned just
+// Build the signature mesh — small extruded text positioned just
 // below z=0 so it visually sits as a stamp under the bin's floor.
 // STL export keeps it as a separate solid touching the bottom.
 function buildSigMesh() {
@@ -696,7 +696,7 @@ function buildSigMesh() {
   return new THREE.Mesh(geom, material);
 }
 
-// The signature mesh is intentionally NOT added to the live preview â€”
+// The signature mesh is intentionally NOT added to the live preview —
 // at low resolution and oblique angles it just shows as edge profiles
 // (thin bars) instead of readable text, which makes the scene look
 // cluttered. Instead we render only the bin in the preview and add a
@@ -731,9 +731,9 @@ const grid = new THREE.GridHelper(400, 20, 0x344, 0x223);
 grid.rotation.x = Math.PI / 2;
 scene.add(grid);
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
 //  GUI
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
 const gui = new GUI({ title: 'OneWall' });
 let pendingRebuild = false;
 const scheduleRebuild = () => {
@@ -742,7 +742,7 @@ const scheduleRebuild = () => {
   requestAnimationFrame(() => { pendingRebuild = false; rebuild(); });
 };
 
-// â€” Geometry folders â€”
+// — Geometry folders —
 const fOuter = gui.addFolder('Outer Dimensions');
 fOuter.add(P, 'outer_w',   40, 300, 1   ).onChange(scheduleRebuild);
 fOuter.add(P, 'outer_d',   40, 300, 1   ).onChange(scheduleRebuild);
@@ -753,11 +753,11 @@ const fSec = gui.addFolder('Section Heights');
 fSec.add(P, 'low_h',   3, 60, 1).onChange(scheduleRebuild);
 fSec.add(P, 'high_h',  3, 60, 1).onChange(scheduleRebuild);
 
-const fLow = gui.addFolder('Low â€” Base');
+const fLow = gui.addFolder('Low — Base');
 fLow.add(P, 'base_scale', 0.6, 1.2, 0.01).onChange(scheduleRebuild);
 fLow.add(P, 'low_curve',   -3,   3, 0.1 ).onChange(scheduleRebuild);
 
-const fMid = gui.addFolder('Mid â€” Vertical Profile');
+const fMid = gui.addFolder('Mid — Vertical Profile');
 fMid.add(P, 'mid_top_scale', 0.7, 1.4, 0.01).onChange(scheduleRebuild);
 fMid.add(P, 'mid_profile',
   ['linear','barrel','hourglass','ogee','bell','doubleBulge','custom']
@@ -766,7 +766,7 @@ fMid.add(P, 'mid_profile_amt',   0, 25, 0.1 ).onChange(scheduleRebuild);
 fMid.add(P, 'mid_custom_freq', 0.25,  8, 0.25).onChange(scheduleRebuild);
 fMid.add(P, 'mid_custom_phase',   0, 360, 5  ).onChange(scheduleRebuild);
 
-const fTex = gui.addFolder('Mid â€” Wall Texture');
+const fTex = gui.addFolder('Mid — Wall Texture');
 fTex.add(P, 'wall_texture',
   ['smooth','ribs','rings','grid','fabric','basket',
    'diamond','diagonal','knurl','wave']
@@ -776,12 +776,12 @@ fTex.add(P, 'tex_x',    4, 200, 1   ).onChange(scheduleRebuild);
 fTex.add(P, 'tex_z',    2, 120, 1   ).onChange(scheduleRebuild);
 fTex.add(P, 'fade_len', 0,  30, 0.5 ).onChange(scheduleRebuild);
 
-const fWave = gui.addFolder('Mid â€” Decorative Wave');
+const fWave = gui.addFolder('Mid — Decorative Wave');
 fWave.add(P, 'wave_amp',     0,    8, 0.1).onChange(scheduleRebuild);
 fWave.add(P, 'wave_lobes',   2,   24, 1  ).onChange(scheduleRebuild);
 fWave.add(P, 'wave_twist', -360, 360, 5  ).onChange(scheduleRebuild);
 
-const fLip = gui.addFolder('High â€” Lip / Top Rim');
+const fLip = gui.addFolder('High — Lip / Top Rim');
 fLip.add(P, 'lip_style',
   ['smooth','rolled','flange','bead','ribbed']
 ).onChange(scheduleRebuild);
@@ -798,11 +798,11 @@ fRes.add(P, 'mesh_layer',    0.4, 4,   0.1).onChange(scheduleRebuild);
 fRes.close();
 
 // Signature parameters (sig_enabled, sig_text, sig_size, sig_depth)
-// are intentionally NOT exposed in the GUI â€” they are locked product
+// are intentionally NOT exposed in the GUI — they are locked product
 // branding. They still live in `P` so session JSON round-trips them
 // and the STL export can read their values.
 
-// â€” Material â€”
+// — Material —
 const fMat = gui.addFolder('Material');
 fMat.addColor(matSettings, 'color').onChange(v => material.color.set(v));
 fMat.add(material, 'roughness', 0, 1, 0.01);
@@ -813,7 +813,7 @@ fMat.addColor(matSettings, 'backgroundColor')
     .name('background')
     .onChange(v => scene.background.set(v));
 
-// â€” Lighting â€”
+// — Lighting —
 function addLightFolder(name, cfg, light, hasDir = true) {
   const f = gui.addFolder('Light: ' + name);
   f.addColor(cfg, 'color')    .onChange(() => applyLight(light, cfg));
@@ -833,9 +833,9 @@ const fExp = gui.addFolder('Renderer');
 fExp.add(renderer, 'toneMappingExposure', 0, 2, 0.05).name('exposure');
 fExp.close();
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-//  SESSION â€” save / load all parameters to/from a JSON file
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
+//  SESSION — save / load all parameters to/from a JSON file
+// ════════════════════════════════════════════════════════════
 function snapshotSession() {
   return {
     format: 'svase_session',
@@ -943,17 +943,17 @@ fSession.add({ save: () => {
 fSession.add({ load: () => hiddenFileInput.click() }, 'load')
         .name('Load session (JSON)');
 
-// â€” Export STL with carved signature â€”
+// — Export STL with carved signature —
 // We build the text mesh, position it overlapping the bin's bottom
 // 0.2 mm layer, and SUBTRACT it from the bin via three-bvh-csg.
 // The result is a single solid with the @Amitkuzi text carved into
-// the underside â€” vase-mode compatible (no extra solids, no
+// the underside — vase-mode compatible (no extra solids, no
 // supports needed).
 const exp = new STLExporter();
 
 function makeSigCarveGeometry() {
   if (!P.sig_enabled || !P.sig_text || !svaseFont) return null;
-  // Total cutter height â€” overshoots the bin's bottom by `margin` so
+  // Total cutter height — overshoots the bin's bottom by `margin` so
   // the subtraction has a clean exit surface.
   const margin = 0.3;
   const carveH = P.sig_depth + margin;
@@ -966,7 +966,7 @@ function makeSigCarveGeometry() {
   });
   geom.center();
   // Mirror in X so the engraving READS CORRECTLY when the user flips
-  // the printed bin over to look at its underside. `rotateY(Ï€)` is a
+  // the printed bin over to look at its underside. `rotateY(π)` is a
   // proper rotation (det = +1), so face winding stays consistent and
   // CSG works without index-flipping. (It also negates Z, but the
   // text's Z bbox is symmetric so the cut volume is unchanged.)
@@ -977,7 +977,7 @@ function makeSigCarveGeometry() {
   geom.translate(0, 0, (P.sig_depth - margin) / 2);
 
   // three-bvh-csg works best on INDEXED manifold geometry. TextGeometry
-  // ships as a non-indexed soup of triangles â†’ merge identical verts
+  // ships as a non-indexed soup of triangles → merge identical verts
   // to recover a proper index buffer and shared edges between chars.
   try {
     geom = mergeVertices(geom, 1e-4);
@@ -989,7 +989,7 @@ function makeSigCarveGeometry() {
 }
 
 async function exportSTL() {
-  stats.textContent = 'preparing STLâ€¦';
+  stats.textContent = 'preparing STL…';
   await new Promise(r => requestAnimationFrame(r));
 
   let exportRoot = printGroup;
@@ -998,16 +998,16 @@ async function exportSTL() {
   let carveOK    = false;
 
   if (typeof Brush !== 'function' || typeof Evaluator !== 'function') {
-    stats.textContent = 'âš  CSG library failed to load â€” exporting bin only';
+    stats.textContent = '⚠ CSG library failed to load — exporting bin only';
     console.warn('OneWall: three-bvh-csg not available');
   } else {
     sigGeom = makeSigCarveGeometry();
     if (!sigGeom) {
-      stats.textContent = 'signature disabled â€” exporting bin only';
+      stats.textContent = 'signature disabled — exporting bin only';
     } else {
       try {
         const t0 = performance.now();
-        stats.textContent = 'carving signatureâ€¦';
+        stats.textContent = 'carving signature…';
         await new Promise(r => requestAnimationFrame(r));
 
         // Clone + reindex the bin geom so we don't mutate the preview mesh.
@@ -1032,10 +1032,10 @@ async function exportSTL() {
         // the carve worked (CSG splits faces around the cut).
         const binFaces    = (binGeom.index ? binGeom.index.count : binGeom.attributes.position.count) / 3;
         const resultFaces = (result.geometry.index ? result.geometry.index.count : result.geometry.attributes.position.count) / 3;
-        console.log(`OneWall CSG: bin=${binFaces} â†’ result=${resultFaces} faces`);
+        console.log(`OneWall CSG: bin=${binFaces} → result=${resultFaces} faces`);
 
         if (Math.abs(resultFaces - binFaces) < 4) {
-          throw new Error('CSG produced no change â€” sig may not overlap bin');
+          throw new Error('CSG produced no change — sig may not overlap bin');
         }
 
         carvedMesh = result;
@@ -1044,11 +1044,11 @@ async function exportSTL() {
         carveOK    = true;
 
         const dt = (performance.now() - t0).toFixed(0);
-        stats.textContent = `âœ“ carved in ${dt} ms â€” writing STLâ€¦`;
+        stats.textContent = `✓ carved in ${dt} ms — writing STL…`;
         await new Promise(r => requestAnimationFrame(r));
       } catch (err) {
         console.error('OneWall CSG carve failed:', err);
-        stats.textContent = 'âš  carve failed: ' + err.message + ' â€” exporting bin only';
+        stats.textContent = '⚠ carve failed: ' + err.message + ' — exporting bin only';
         exportRoot = printGroup;
       }
     }
@@ -1064,14 +1064,14 @@ async function exportSTL() {
   if (carvedMesh) carvedMesh.geometry.dispose();
   if (sigGeom)    sigGeom.dispose();
 
-  if (carveOK) stats.textContent = 'âœ“ STL with engraved signature exported';
+  if (carveOK) stats.textContent = '✓ STL with engraved signature exported';
 }
 
 gui.add({ exportSTL }, 'exportSTL').name('Download STL (engraved)');
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
 //  RESIZE + RENDER LOOP
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
