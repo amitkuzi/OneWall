@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OneWall — Vase-Mode Bin & Container Customizer</title>
+<style>
+  :root {
+    --bg: #1a1a1d;
+    --fg: #d7dbe2;
+    --muted: #8893a8;
+    --accent: #6aa6ff;
+    --header-bg: rgba(18, 19, 24, 0.78);
+    --modal-bg: #1d1f25;
+    --border: #2b2f3a;
+  }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden;
+               background: var(--bg); color: var(--fg);
+               font-family: system-ui, sans-serif; }
+  #app { position: fixed; inset: 0; }
+
+  /* ── Header bar ─────────────────────────────────────── */
+  #header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px; height: 48px; box-sizing: border-box;
+    background: var(--header-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  #brand { display: flex; align-items: baseline; gap: 8px; user-select: none; }
+  #brand .logo {
+    font-weight: 700; font-size: 18px; letter-spacing: 0.5px;
+    color: var(--fg);
+  }
+  #brand .logo .one { color: var(--accent); }
+  #brand .tagline {
+    font-size: 12px; color: var(--muted);
+  }
+  #brand .ver {
+    font-size: 10px; color: var(--muted); margin-left: 6px;
+    padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px;
+  }
+  #header nav { display: flex; gap: 6px; align-items: center; }
+  #header button.nav {
+    background: transparent; color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 10px; font-size: 12px; cursor: pointer;
+    font-family: inherit;
+  }
+  #header button.nav:hover { border-color: var(--accent); color: var(--accent); }
+  #header .lang {
+    min-width: 44px; font-variant: small-caps;
+  }
+
+  /* ── Overlays (stats / hint) — kept clear of header ── */
+  #stats { position: fixed; top: 56px; left: 12px; color: var(--muted);
+           font-size: 11px; font-family: ui-monospace, monospace;
+           background: rgba(0,0,0,.4); padding: 3px 8px; border-radius: 4px;
+           pointer-events: none; z-index: 10; }
+  #hint  { position: fixed; bottom: 8px; left: 12px; color: #5f6b80;
+           font-size: 11px; font-family: ui-monospace, monospace;
+           pointer-events: none; }
+  #sig-badge {
+    position: fixed; bottom: 8px; right: 12px;
+    color: var(--muted); font-size: 11px;
+    font-family: ui-monospace, monospace;
+    background: rgba(0,0,0,.4); padding: 3px 8px;
+    border: 1px solid var(--border); border-radius: 4px;
+    pointer-events: none; z-index: 10;
+  }
+  #sig-badge.off { opacity: 0.35; }
+  #sig-badge .label { color: var(--accent); }
+
+  /* ── Modal (<dialog>) ───────────────────────────────── */
+  dialog.ow-modal {
+    background: var(--modal-bg); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 0; max-width: 720px; width: min(90vw, 720px);
+    max-height: 80vh; overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  }
+  dialog.ow-modal::backdrop { background: rgba(0,0,0,.55); }
+  .ow-modal header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .ow-modal header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .ow-modal header button {
+    background: transparent; color: var(--muted);
+    border: none; font-size: 22px; line-height: 1; cursor: pointer;
+    padding: 2px 8px;
+  }
+  .ow-modal header button:hover { color: var(--fg); }
+  .ow-modal .ow-body {
+    padding: 16px 18px; overflow-y: auto; max-height: calc(80vh - 52px);
+    line-height: 1.5; font-size: 14px;
+  }
+  .ow-modal a { color: var(--accent); text-decoration: none; }
+  .ow-modal a:hover { text-decoration: underline; }
+  .ow-modal h3 {
+    margin: 18px 0 6px; font-size: 14px;
+    color: var(--accent); border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+  }
+  .ow-modal h3:first-child { margin-top: 0; }
+  .ow-modal table {
+    width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 13px;
+  }
+  .ow-modal th, .ow-modal td {
+    text-align: left; padding: 5px 8px;
+    border-bottom: 1px solid var(--border); vertical-align: top;
+  }
+  .ow-modal th { color: var(--muted); font-weight: 500; }
+  .ow-modal code {
+    background: rgba(255,255,255,.06); padding: 1px 5px;
+    border-radius: 3px; font-size: 12px;
+  }
+  .ow-modal .pill {
+    display: inline-block; padding: 2px 8px; margin: 0 4px 4px 0;
+    border: 1px solid var(--border); border-radius: 999px;
+    font-size: 12px; color: var(--muted);
+  }
+  .ow-modal .links {
+    display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px;
+  }
+  .ow-modal .links a {
+    padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px;
+  }
+  .ow-modal .placeholder {
+    color: var(--muted); font-style: italic; font-size: 12px;
+  }
+
+  /* About modal — avatar + identity header */
+  .about-identity {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 4px;
+  }
+  .about-avatar {
+    width: 84px; height: 84px; border-radius: 50%;
+    object-fit: cover; flex-shrink: 0;
+    background: var(--border);
+    border: 2px solid var(--accent);
+  }
+  .about-avatar.fallback {
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 26px; color: var(--accent);
+  }
+  .about-name { display: flex; flex-direction: column; gap: 2px; }
+  .about-handle { color: var(--accent); font-weight: 600; font-size: 16px; }
+  .about-real   { color: var(--fg); font-size: 14px; }
+  .about-loc    { color: var(--muted); font-size: 12px; }
+
+  /* ── RTL flip when lang = he ────────────────────────── */
+  html[dir="rtl"] #header { direction: rtl; }
+  html[dir="rtl"] .ow-modal { direction: rtl; }
+  html[dir="rtl"] #stats, html[dir="rtl"] #hint { left: auto; right: 12px; }
+
+  /* ── Push lil-gui below the header so it never covers the
+        Help / About / Lang buttons ──────────────────────── */
+  .lil-gui.root {
+    top: 56px !important;
+    max-height: calc(100vh - 64px);
+  }
+  html[dir="rtl"] .lil-gui.root {
+    right: auto !important; left: 0 !important;
+  }
+</style>
+</head>
+<body>
+<canvas id="app"></canvas>
+
+<header id="header">
+  <div id="brand">
+    <span class="logo"><span class="one">One</span>Wall</span>
+    <span class="tagline" data-i18n="tagline">Vase-Mode Bin & Container Customizer</span>
+    <span class="ver">v0.1</span>
+  </div>
+  <nav>
+    <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
+    <button class="nav" id="btn-about" data-i18n="nav.about">About</button>
+    <button class="nav lang" id="btn-lang" title="Switch language">EN</button>
+  </nav>
+</header>
+
+<!-- ───── Help modal (filled in Phase 2 with full param docs) ───── -->
+<dialog id="modal-help" class="ow-modal">
+  <header>
+    <h2 data-i18n="help.title">Help — Parameters & Usage</h2>
+    <button class="close" aria-label="Close">&times;</button>
+  </header>
+  <div class="ow-body">
+    <h3 data-i18n="help.intro_title">What is OneWall?</h3>
+    <p data-i18n="help.intro">
+      OneWall is a parametric customizer for vase-mode 3D-printed bins
+      and containers. Adjust the sliders to shape the wall, texture and
+      lip, then export an STL or download a session JSON to share.
+    </p>
+
+    <h3 data-i18n="help.sections_title">The three height sections</h3>
+    <p data-i18n="help.sections">
+      Every bin is divided into a LOW section (base transition), a MID
+      section (the main wall — vertical profile + texture) and a HIGH
+      section (the lip / rim). Each has its own controls.
+    </p>
+
+    <h3 data-i18n="help.placeholder_title">Full parameter reference</h3>
+    <p class="placeholder" data-i18n="help.placeholder">
+      Coming in the next update: hover-tooltips on every slider and a
+      complete table of every parameter with units, ranges and tips.
+    </p>
+  </div>
+</dialog>
+
+<!-- ───── About modal (bio + links) ───── -->
+<dialog id="modal-about" class="ow-modal">
+  <header>
+    <h2 data-i18n="about.title">About OneWall</h2>
+    <button class="close" aria-label="Close">&times;</button>
+  </header>
+  <div class="ow-body">
+    <div class="about-identity">
+      <img src="assets/avatar.png" alt="Amit Kuzi"
+           class="about-avatar"
+           onerror="this.classList.add('fallback'); this.outerHTML =
+             '<div class=&quot;about-avatar fallback&quot;>AK</div>';">
+      <div class="about-name">
+        <span class="about-handle">@Amitkuzi</span>
+        <span class="about-real">Amit Kuzi</span>
+        <span class="about-loc">Israel</span>
+      </div>
+    </div>
+
+    <p>
+      Software architect and engineering leader from Israel.
+      I build backend systems by day, parametric prints by night.
+    </p>
+
+    <h3>Links</h3>
+    <div class="links">
+      <a href="https://www.linkedin.com/in/amitkuzi/" target="_blank" rel="noopener">LinkedIn</a>
+      <a href="https://github.com/amitkuzi"           target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/amitkuzi/OneWall"   target="_blank" rel="noopener">OneWall repo</a>
+    </div>
+
+    <h3>License &amp; credits</h3>
+    <p>
+      OneWall is released under <strong>CC BY 4.0</strong>. Built with
+      OpenSCAD, Three.js and lil-gui. Every print carries the
+      <code>@Amitkuzi</code> bottom signature.
+    </p>
+
+    <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
+      OneWall · v0.1
+    </p>
+  </div>
+</dialog>
+
+<div id="stats">— ready —</div>
+<div id="hint">drag = rotate · right-drag = pan · wheel = zoom</div>
+<div id="sig-badge">
+  <span class="label">bottom signature:</span>
+  <span id="sig-badge-text">@Amitkuzi</span>
+</div>
+
+<script>
+  // Phase-1 UI wiring: modals + language stub.
+  // The i18n engine itself ships in Phase 2 — for now the button just
+  // toggles the document direction so the layout flip can be previewed.
+  const helpModal  = document.getElementById('modal-help');
+  const aboutModal = document.getElementById('modal-about');
+  document.getElementById('btn-help' ).addEventListener('click', () => helpModal.showModal());
+  document.getElementById('btn-about').addEventListener('click', () => aboutModal.showModal());
+  document.querySelectorAll('dialog.ow-modal .close').forEach(b =>
+    b.addEventListener('click', () => b.closest('dialog').close()));
+
+  const langBtn = document.getElementById('btn-lang');
+  let currentLang = 'en';
+  langBtn.addEventListener('click', () => {
+    currentLang = currentLang === 'en' ? 'he' : 'en';
+    document.documentElement.lang = currentLang;
+    document.documentElement.dir  = currentLang === 'he' ? 'rtl' : 'ltr';
+    langBtn.textContent = currentLang.toUpperCase();
+    // Real translation happens in Phase 2.
+  });
+</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+    "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/+esm",
+    "three-bvh-csg": "https://esm.sh/three-bvh-csg@0.0.17?deps=three@0.160.0&bundle"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE         from 'three';
+import { OrbitControls }  from 'three/addons/controls/OrbitControls.js';
+import { STLExporter }    from 'three/addons/exporters/STLExporter.js';
+import { FontLoader }     from 'three/addons/loaders/FontLoader.js';
+import { TextGeometry }   from 'three/addons/geometries/TextGeometry.js';
+import { mergeVertices }  from 'three/addons/utils/BufferGeometryUtils.js';
+import GUI                from 'lil-gui';
+// CSG library — used at STL export time to subtract the signature
+// from the bin (true engraving, single solid, vase-mode compatible).
+import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
+
+// ════════════════════════════════════════════════════════════
+//  PARAMETERS — mirror of onewall.scad
+// ════════════════════════════════════════════════════════════
+const P = {
+  // Outer
+  outer_w: 110, outer_d: 90, height: 120, corner_r: 14,
+  // Sections
+  low_h: 16, high_h: 18,
+  // Low transition
+  base_scale: 0.86, low_curve: -1.2,
+  // Mid vertical profile
+  mid_top_scale: 1.04, mid_profile: 'linear', mid_profile_amt: 4,
+  mid_custom_freq: 1.5, mid_custom_phase: 0,
+  // Mid texture
+  wall_texture: 'fabric', tex_amp: 0.9, tex_x: 38, tex_z: 28, fade_len: 9,
+  // Decorative wave overlay
+  wave_amp: 0, wave_lobes: 6, wave_twist: 0,
+  // High / lip
+  lip_style: 'rolled',
+  lip_scale: 1.02, high_curve: 0.1,
+  lip_peak_scale: 1.18, lip_top_scale: 1.04,
+  lip_ribs: 4, lip_rib_amp: 0.9,
+  // Resolution
+  point_spacing: 2.2, mesh_layer: 1.4,
+  // Signature engraving (bottom of bin) — depth = 1 layer (0.2 mm) by default
+  sig_enabled: true, sig_text: '@Amitkuzi', sig_size: 6, sig_depth: 0.2,
+};
+
+// ════════════════════════════════════════════════════════════
+//  MATH — direct port of OpenSCAD functions
+//  All trig args in OpenSCAD are degrees → multiply by π/180.
+// ════════════════════════════════════════════════════════════
+const D2R   = Math.PI / 180;
+const clampf = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+const lerp   = (a, b, t)   => a + (b - a) * t;
+
+const sstep = (e0, e1, x) => {
+  const t = clampf((x - e0) / (e1 - e0), 0, 1);
+  return t * t * (3 - 2 * t);
+};
+
+const ease = (t, e) => {
+  if (e === 0) return t;
+  return e > 0 ? Math.pow(t, 1 + e) : 1 - Math.pow(1 - t, 1 - e);
+};
+
+// Cross-section ring of [x,y] points around a rounded rectangle.
+function baseRing(outer_w, outer_d, corner_r, point_spacing) {
+  const cr = Math.min(corner_r, outer_w/2 - 0.5, outer_d/2 - 0.5);
+  const a  = outer_w/2 - cr;
+  const b  = outer_d/2 - cr;
+
+  const ecount = len => len < point_spacing * 0.5 ? 0
+                       : Math.max(1, Math.round(len / point_spacing));
+  const acount = r   => Math.max(2, Math.ceil((Math.PI * r / 2) / point_spacing));
+
+  const edge = (p0, p1, n) => {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      out.push([p0[0] + (p1[0]-p0[0])*t, p0[1] + (p1[1]-p0[1])*t]);
+    }
+    return out;
+  };
+  const arc = (cx, cy, r, a0, a1, n) => {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const ang = (a0 + (a1 - a0) * i / n) * D2R;
+      out.push([cx + r*Math.cos(ang), cy + r*Math.sin(ang)]);
+    }
+    return out;
+  };
+
+  return [
+    ...edge([ a+cr, -b], [ a+cr,  b], ecount(2*b)),
+    ...arc (  a,  b, cr,   0,  90,    acount(cr)),
+    ...edge([ a,  b+cr], [-a,  b+cr], ecount(2*a)),
+    ...arc ( -a,  b, cr,  90, 180,    acount(cr)),
+    ...edge([-a-cr,  b], [-a-cr, -b], ecount(2*b)),
+    ...arc ( -a, -b, cr, 180, 270,    acount(cr)),
+    ...edge([-a, -b-cr], [ a, -b-cr], ecount(2*a)),
+    ...arc (  a, -b, cr, 270, 360,    acount(cr)),
+  ];
+}
+
+// Section-fade and other helpers depend on current P; defined inside build.
+
+// ════════════════════════════════════════════════════════════
+//  GEOMETRY BUILD
+// ════════════════════════════════════════════════════════════
+function buildGeometry() {
+  const ring = baseRing(P.outer_w, P.outer_d, P.corner_r, P.point_spacing);
+  const M    = ring.length;
+  const mid_h = P.height - P.low_h - P.high_h;
+
+  const fade = z =>
+    sstep(P.low_h, P.low_h + P.fade_len, z) *
+    (1 - sstep(P.height - P.high_h - P.fade_len, P.height - P.high_h, z));
+
+  // High (lip) scale as a function of t in [0,1]
+  const high_lip_scale = t => {
+    switch (P.lip_style) {
+      case 'smooth':
+        return lerp(P.mid_top_scale, P.lip_scale, ease(t, P.high_curve));
+      case 'rolled':
+        return t < 0.5
+          ? lerp(P.mid_top_scale, P.lip_peak_scale, sstep(0, 1, t * 2))
+          : lerp(P.lip_peak_scale, P.lip_top_scale, sstep(0, 1, (t - 0.5) * 2));
+      case 'flange':
+        if (t < 0.18) return lerp(P.mid_top_scale, P.lip_peak_scale, sstep(0, 1, t / 0.18));
+        if (t < 0.82) return P.lip_peak_scale;
+        return lerp(P.lip_peak_scale, P.lip_top_scale, sstep(0, 1, (t - 0.82) / 0.18));
+      case 'bead':
+        if (t < 0.25) return P.mid_top_scale;
+        if (t < 0.65) return lerp(P.mid_top_scale, P.lip_peak_scale, sstep(0, 1, (t - 0.25) / 0.40));
+        return lerp(P.lip_peak_scale, P.lip_top_scale, sstep(0, 1, (t - 0.65) / 0.35));
+      case 'ribbed':
+        return lerp(P.mid_top_scale, P.lip_top_scale, ease(t, P.high_curve));
+      default: return P.mid_top_scale;
+    }
+  };
+
+  const lip_rib_offset = z => {
+    if (P.lip_style !== 'ribbed' || P.lip_ribs <= 0) return 0;
+    if (z < P.height - P.high_h) return 0;
+    const u = (z - (P.height - P.high_h)) / P.high_h;
+    return P.lip_rib_amp * Math.cos(2 * Math.PI * P.lip_ribs * u);
+  };
+
+  const sectionScale = z => {
+    if (z <= P.low_h)
+      return lerp(P.base_scale, 1, ease(z / P.low_h, P.low_curve));
+    if (z >= P.height - P.high_h)
+      return high_lip_scale((z - (P.height - P.high_h)) / P.high_h);
+    return lerp(1, P.mid_top_scale, (z - P.low_h) / mid_h);
+  };
+
+  const profileCurve = t => {
+    switch (P.mid_profile) {
+      case 'barrel':      return  Math.sin(Math.PI * t);
+      case 'hourglass':   return -Math.sin(Math.PI * t);
+      case 'ogee':        return  Math.sin(2 * Math.PI * t);
+      case 'bell':        return  Math.pow(1 - Math.pow(2*t - 1, 2), 2);
+      case 'doubleBulge': return  Math.sin(Math.PI * t) * Math.sin(2 * Math.PI * t);
+      case 'custom':      return  Math.sin(2 * Math.PI * P.mid_custom_freq * t
+                                           + P.mid_custom_phase * D2R);
+      default:            return  0;
+    }
+  };
+
+  const vprofileOffset = z => {
+    if (z < P.low_h || z > P.height - P.high_h) return 0;
+    const t  = (z - P.low_h) / mid_h;
+    return fade(z) * P.mid_profile_amt * profileCurve(t);
+  };
+
+  const tex = (s, tz) => {
+    const C = Math.cos, S = Math.sin, TAU = 2 * Math.PI;
+    switch (P.wall_texture) {
+      case 'smooth':   return 0;
+      case 'ribs':     return C(TAU * P.tex_x * s);
+      case 'rings':    return C(TAU * P.tex_z * tz);
+      case 'grid':     return 0.5 * (C(TAU * P.tex_x * s) + C(TAU * P.tex_z * tz));
+      case 'fabric':   return S(TAU * P.tex_x * s) * S(TAU * P.tex_z * tz);
+      case 'basket':   return 0.5 * (S(TAU * P.tex_x * s) + S(TAU * P.tex_z * tz)
+                                   + S(TAU * P.tex_x * s) * S(TAU * P.tex_z * tz));
+      case 'diamond':  return C(TAU * (P.tex_x * s + P.tex_z * tz));
+      case 'diagonal': return C(TAU * P.tex_x * (s + 0.5 * tz));
+      case 'knurl':    return 0.5 * (C(TAU * P.tex_x * (s + 0.5 * tz))
+                                   + C(TAU * P.tex_x * (s - 0.5 * tz)));
+      case 'wave':     return C(TAU * P.wave_lobes * s + P.wave_twist * D2R * tz);
+      default:         return 0;
+    }
+  };
+
+  const modul = (s, z) => {
+    const tz = z / P.height, fz = fade(z);
+    return vprofileOffset(z)
+      + fz * P.tex_amp * tex(s, tz)
+      + fz * P.wave_amp * Math.cos(2 * Math.PI * P.wave_lobes * s
+                                   + P.wave_twist * D2R * tz)
+      + lip_rib_offset(z);
+  };
+
+  // Layered point cloud
+  const L     = Math.max(2, Math.round(P.height / P.mesh_layer) + 1);
+  const zstep = P.height / (L - 1);
+
+  const positions = new Float32Array(L * M * 3);
+  for (let l = 0; l < L; l++) {
+    const z = l * zstep;
+    const S = sectionScale(z);
+    for (let k = 0; k < M; k++) {
+      const p   = ring[k];
+      const rad = Math.max(Math.hypot(p[0], p[1]), 0.0001);
+      const nx  = p[0] / rad, ny = p[1] / rad;
+      const d   = modul(k / M, z);
+      const idx = (l * M + k) * 3;
+      positions[idx]     = p[0] * S + nx * d;
+      positions[idx + 1] = p[1] * S + ny * d;
+      positions[idx + 2] = z;
+    }
+  }
+
+  // Indices: sides (2 tris per quad) + bottom (fan) + top (fan)
+  const sideTris   = (L - 1) * M * 2;
+  const capTris    = 2 * (M - 2);
+  const indexCount = (sideTris + capTris) * 3;
+  const indices    = new Uint32Array(indexCount);
+  let ii = 0;
+
+  // Three.js uses CCW-from-outside (right-hand rule) for face normals.
+  const I = (l, k) => l * M + (k % M);
+  for (let l = 0; l < L - 1; l++) {
+    for (let k = 0; k < M; k++) {
+      indices[ii++] = I(l,   k);
+      indices[ii++] = I(l,   k+1);
+      indices[ii++] = I(l+1, k+1);
+      indices[ii++] = I(l,   k);
+      indices[ii++] = I(l+1, k+1);
+      indices[ii++] = I(l+1, k);
+    }
+  }
+  // Bottom fan (CCW from below → reversed)
+  for (let k = 1; k < M - 1; k++) {
+    indices[ii++] = 0;
+    indices[ii++] = k + 1;
+    indices[ii++] = k;
+  }
+  // Top fan
+  const base = (L - 1) * M;
+  for (let k = 1; k < M - 1; k++) {
+    indices[ii++] = base;
+    indices[ii++] = base + k;
+    indices[ii++] = base + k + 1;
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom.setIndex(new THREE.BufferAttribute(indices, 1));
+  geom.computeVertexNormals();
+  // Center on XY, base at z=0
+  geom.translate(0, 0, 0);
+  return { geom, verts: L * M, tris: indexCount / 3 };
+}
+
+// ════════════════════════════════════════════════════════════
+//  THREE.JS SCENE
+// ════════════════════════════════════════════════════════════
+const canvas = document.getElementById('app');
+const stats  = document.getElementById('stats');
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#1a1a1d');
+
+const camera = new THREE.PerspectiveCamera(40,
+  window.innerWidth / window.innerHeight, 1, 5000);
+camera.position.set(220, -260, 180);
+camera.up.set(0, 0, 1);
+scene.add(camera);
+
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, 0, 60);
+controls.update();
+controls.enableDamping = true;
+
+// Material
+const matSettings = {
+  color: '#7e8aa6', roughness: 0.45, metalness: 0.15,
+  clearcoat: 0.25, clearcoatRoughness: 0.4,
+  backgroundColor: '#1a1a1d',
+};
+const material = new THREE.MeshPhysicalMaterial({
+  color: matSettings.color,
+  roughness: matSettings.roughness,
+  metalness: matSettings.metalness,
+  clearcoat: matSettings.clearcoat,
+  clearcoatRoughness: matSettings.clearcoatRoughness,
+  side: THREE.DoubleSide,
+});
+
+// Lights
+const L = {
+  ambient:    { color: '#404858', intensity: 0.55 },
+  key:        { color: '#fff5e1', intensity: 1.20, az:  35, alt: 55 },
+  fill:       { color: '#a8c2ff', intensity: 0.55, az: 200, alt: 30 },
+  rim:        { color: '#ffe1c2', intensity: 0.65, az: 290, alt: 15 },
+};
+
+const ambientLight = new THREE.AmbientLight(L.ambient.color, L.ambient.intensity);
+const keyLight     = new THREE.DirectionalLight(L.key.color,  L.key.intensity);
+const fillLight    = new THREE.DirectionalLight(L.fill.color, L.fill.intensity);
+const rimLight     = new THREE.DirectionalLight(L.rim.color,  L.rim.intensity);
+scene.add(ambientLight, keyLight, fillLight, rimLight);
+
+function dirFromAzAlt(az, alt, dist = 300) {
+  const A = az * D2R, E = alt * D2R;
+  return new THREE.Vector3(
+    Math.cos(E) * Math.cos(A) * dist,
+    Math.cos(E) * Math.sin(A) * dist,
+    Math.sin(E) * dist
+  );
+}
+function applyLight(light, cfg) {
+  light.color.set(cfg.color);
+  light.intensity = cfg.intensity;
+  if (cfg.az !== undefined) {
+    light.position.copy(dirFromAzAlt(cfg.az, cfg.alt));
+    light.target.position.set(0, 0, 60);
+    light.target.updateMatrixWorld();
+  }
+}
+applyLight(ambientLight, L.ambient);
+applyLight(keyLight,     L.key);
+applyLight(fillLight,    L.fill);
+applyLight(rimLight,     L.rim);
+
+// Printable group — holds the bin and the signature stamp.
+// STL export serializes this whole group (both meshes).
+const printGroup = new THREE.Group();
+scene.add(printGroup);
+
+let binMesh   = null;
+let sigMesh   = null;
+let svaseFont = null;
+
+// Async font load — when ready, trigger a rebuild so the signature appears.
+new FontLoader().load(
+  'https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_regular.typeface.json',
+  font => { svaseFont = font; scheduleRebuild(); },
+  undefined,
+  () => { stats.textContent += '  [font load failed]'; }
+);
+
+// Build the signature mesh — small extruded text positioned just
+// below z=0 so it visually sits as a stamp under the bin's floor.
+// STL export keeps it as a separate solid touching the bottom.
+function buildSigMesh() {
+  if (!P.sig_enabled || !P.sig_text || !svaseFont) return null;
+  const geom = new TextGeometry(P.sig_text, {
+    font: svaseFont,
+    size: P.sig_size,
+    depth: P.sig_depth,
+    curveSegments: 4,
+    bevelEnabled: false,
+  });
+  geom.center();
+  // After center() Z is [-d/2, d/2]; shift so TOP face sits at z=0.
+  geom.translate(0, 0, -P.sig_depth / 2);
+  return new THREE.Mesh(geom, material);
+}
+
+// The signature mesh is intentionally NOT added to the live preview —
+// at low resolution and oblique angles it just shows as edge profiles
+// (thin bars) instead of readable text, which makes the scene look
+// cluttered. Instead we render only the bin in the preview and add a
+// fresh signature solid on the fly when the user exports STL.
+function rebuild() {
+  const t0 = performance.now();
+  if (binMesh) { printGroup.remove(binMesh); binMesh.geometry.dispose(); }
+  if (sigMesh) { printGroup.remove(sigMesh); sigMesh.geometry.dispose(); sigMesh = null; }
+
+  const { geom, verts, tris } = buildGeometry();
+  binMesh = new THREE.Mesh(geom, material);
+  printGroup.add(binMesh);
+
+  const dt = (performance.now() - t0).toFixed(1);
+  stats.textContent = `verts=${verts}  tris=${tris}  rebuild=${dt}ms`;
+  updateSigBadge();
+}
+rebuild();
+
+function updateSigBadge() {
+  const badge = document.getElementById('sig-badge');
+  const txt   = document.getElementById('sig-badge-text');
+  const on = P.sig_enabled && P.sig_text && svaseFont;
+  badge.classList.toggle('off', !on);
+  txt.textContent = P.sig_enabled
+    ? (P.sig_text || '(empty)')
+    : '(disabled)';
+}
+
+// Floor grid for visual reference
+const grid = new THREE.GridHelper(400, 20, 0x344, 0x223);
+grid.rotation.x = Math.PI / 2;
+scene.add(grid);
+
+// ════════════════════════════════════════════════════════════
+//  GUI
+// ════════════════════════════════════════════════════════════
+const gui = new GUI({ title: 'OneWall' });
+let pendingRebuild = false;
+const scheduleRebuild = () => {
+  if (pendingRebuild) return;
+  pendingRebuild = true;
+  requestAnimationFrame(() => { pendingRebuild = false; rebuild(); });
+};
+
+// — Geometry folders —
+const fOuter = gui.addFolder('Outer Dimensions');
+fOuter.add(P, 'outer_w',   40, 300, 1   ).onChange(scheduleRebuild);
+fOuter.add(P, 'outer_d',   40, 300, 1   ).onChange(scheduleRebuild);
+fOuter.add(P, 'height',    20, 400, 1   ).onChange(scheduleRebuild);
+fOuter.add(P, 'corner_r',   0, 120, 0.5 ).onChange(scheduleRebuild);
+
+const fSec = gui.addFolder('Section Heights');
+fSec.add(P, 'low_h',   3, 60, 1).onChange(scheduleRebuild);
+fSec.add(P, 'high_h',  3, 60, 1).onChange(scheduleRebuild);
+
+const fLow = gui.addFolder('Low — Base');
+fLow.add(P, 'base_scale', 0.6, 1.2, 0.01).onChange(scheduleRebuild);
+fLow.add(P, 'low_curve',   -3,   3, 0.1 ).onChange(scheduleRebuild);
+
+const fMid = gui.addFolder('Mid — Vertical Profile');
+fMid.add(P, 'mid_top_scale', 0.7, 1.4, 0.01).onChange(scheduleRebuild);
+fMid.add(P, 'mid_profile',
+  ['linear','barrel','hourglass','ogee','bell','doubleBulge','custom']
+).onChange(scheduleRebuild);
+fMid.add(P, 'mid_profile_amt',   0, 25, 0.1 ).onChange(scheduleRebuild);
+fMid.add(P, 'mid_custom_freq', 0.25,  8, 0.25).onChange(scheduleRebuild);
+fMid.add(P, 'mid_custom_phase',   0, 360, 5  ).onChange(scheduleRebuild);
+
+const fTex = gui.addFolder('Mid — Wall Texture');
+fTex.add(P, 'wall_texture',
+  ['smooth','ribs','rings','grid','fabric','basket',
+   'diamond','diagonal','knurl','wave']
+).onChange(scheduleRebuild);
+fTex.add(P, 'tex_amp',  0,   3, 0.05).onChange(scheduleRebuild);
+fTex.add(P, 'tex_x',    4, 200, 1   ).onChange(scheduleRebuild);
+fTex.add(P, 'tex_z',    2, 120, 1   ).onChange(scheduleRebuild);
+fTex.add(P, 'fade_len', 0,  30, 0.5 ).onChange(scheduleRebuild);
+
+const fWave = gui.addFolder('Mid — Decorative Wave');
+fWave.add(P, 'wave_amp',     0,    8, 0.1).onChange(scheduleRebuild);
+fWave.add(P, 'wave_lobes',   2,   24, 1  ).onChange(scheduleRebuild);
+fWave.add(P, 'wave_twist', -360, 360, 5  ).onChange(scheduleRebuild);
+
+const fLip = gui.addFolder('High — Lip / Top Rim');
+fLip.add(P, 'lip_style',
+  ['smooth','rolled','flange','bead','ribbed']
+).onChange(scheduleRebuild);
+fLip.add(P, 'lip_scale',      0.7, 1.4, 0.01).onChange(scheduleRebuild);
+fLip.add(P, 'high_curve',      -3,   3, 0.1 ).onChange(scheduleRebuild);
+fLip.add(P, 'lip_peak_scale', 0.9, 1.6, 0.01).onChange(scheduleRebuild);
+fLip.add(P, 'lip_top_scale',  0.7, 1.4, 0.01).onChange(scheduleRebuild);
+fLip.add(P, 'lip_ribs',         0,  12, 1   ).onChange(scheduleRebuild);
+fLip.add(P, 'lip_rib_amp',      0,   3, 0.05).onChange(scheduleRebuild);
+
+const fRes = gui.addFolder('Resolution');
+fRes.add(P, 'point_spacing', 0.8, 5,   0.1).onChange(scheduleRebuild);
+fRes.add(P, 'mesh_layer',    0.4, 4,   0.1).onChange(scheduleRebuild);
+fRes.close();
+
+// Signature parameters (sig_enabled, sig_text, sig_size, sig_depth)
+// are intentionally NOT exposed in the GUI — they are locked product
+// branding. They still live in `P` so session JSON round-trips them
+// and the STL export can read their values.
+
+// — Material —
+const fMat = gui.addFolder('Material');
+fMat.addColor(matSettings, 'color').onChange(v => material.color.set(v));
+fMat.add(material, 'roughness', 0, 1, 0.01);
+fMat.add(material, 'metalness', 0, 1, 0.01);
+fMat.add(material, 'clearcoat', 0, 1, 0.01);
+fMat.add(material, 'clearcoatRoughness', 0, 1, 0.01);
+fMat.addColor(matSettings, 'backgroundColor')
+    .name('background')
+    .onChange(v => scene.background.set(v));
+
+// — Lighting —
+function addLightFolder(name, cfg, light, hasDir = true) {
+  const f = gui.addFolder('Light: ' + name);
+  f.addColor(cfg, 'color')    .onChange(() => applyLight(light, cfg));
+  f.add(cfg, 'intensity', 0, 3, 0.01).onChange(() => applyLight(light, cfg));
+  if (hasDir) {
+    f.add(cfg, 'az',  0, 360, 1).name('azimuth').onChange(() => applyLight(light, cfg));
+    f.add(cfg, 'alt', -90, 90, 1).name('altitude').onChange(() => applyLight(light, cfg));
+  }
+  return f;
+}
+addLightFolder('Ambient', L.ambient, ambientLight, false);
+addLightFolder('Key',     L.key,     keyLight);
+addLightFolder('Fill',    L.fill,    fillLight);
+addLightFolder('Rim',     L.rim,     rimLight);
+
+const fExp = gui.addFolder('Renderer');
+fExp.add(renderer, 'toneMappingExposure', 0, 2, 0.05).name('exposure');
+fExp.close();
+
+// ════════════════════════════════════════════════════════════
+//  SESSION — save / load all parameters to/from a JSON file
+// ════════════════════════════════════════════════════════════
+function snapshotSession() {
+  return {
+    format: 'svase_session',
+    version: 1,
+    savedAt: new Date().toISOString(),
+    params:   { ...P },
+    material: {
+      color:               matSettings.color,
+      roughness:           material.roughness,
+      metalness:           material.metalness,
+      clearcoat:           material.clearcoat,
+      clearcoatRoughness:  material.clearcoatRoughness,
+      backgroundColor:     matSettings.backgroundColor,
+    },
+    lights: {
+      ambient: { ...L.ambient },
+      key:     { ...L.key     },
+      fill:    { ...L.fill    },
+      rim:     { ...L.rim     },
+    },
+    renderer: { exposure: renderer.toneMappingExposure },
+    camera:   {
+      position: camera.position.toArray(),
+      target:   controls.target.toArray(),
+    },
+  };
+}
+
+function restoreSession(data) {
+  if (!data || data.format !== 'svase_session') {
+    alert('Not a svase session file.');
+    return;
+  }
+  // Parameters
+  if (data.params)
+    for (const k of Object.keys(P))
+      if (k in data.params) P[k] = data.params[k];
+
+  // Material
+  const m = data.material || {};
+  if ('color'              in m) { matSettings.color = m.color; material.color.set(m.color); }
+  if ('roughness'          in m) material.roughness          = m.roughness;
+  if ('metalness'          in m) material.metalness          = m.metalness;
+  if ('clearcoat'          in m) material.clearcoat          = m.clearcoat;
+  if ('clearcoatRoughness' in m) material.clearcoatRoughness = m.clearcoatRoughness;
+  if ('backgroundColor'    in m) {
+    matSettings.backgroundColor = m.backgroundColor;
+    scene.background.set(m.backgroundColor);
+  }
+
+  // Lights
+  const li = data.lights || {};
+  for (const name of ['ambient','key','fill','rim'])
+    if (li[name]) Object.assign(L[name], li[name]);
+  applyLight(ambientLight, L.ambient);
+  applyLight(keyLight,     L.key);
+  applyLight(fillLight,    L.fill);
+  applyLight(rimLight,     L.rim);
+
+  // Renderer
+  if (data.renderer && 'exposure' in data.renderer)
+    renderer.toneMappingExposure = data.renderer.exposure;
+
+  // Camera (optional)
+  if (data.camera) {
+    if (data.camera.position) camera.position.fromArray(data.camera.position);
+    if (data.camera.target)   controls.target.fromArray(data.camera.target);
+    controls.update();
+  }
+
+  // Refresh every visible slider and rebuild
+  gui.controllersRecursive().forEach(c => c.updateDisplay());
+  rebuild();
+}
+
+const hiddenFileInput = document.createElement('input');
+hiddenFileInput.type = 'file';
+hiddenFileInput.accept = '.json,application/json';
+hiddenFileInput.style.display = 'none';
+hiddenFileInput.addEventListener('change', ev => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { restoreSession(JSON.parse(e.target.result)); }
+    catch (err) { alert('Failed to load session:\n' + err.message); }
+  };
+  reader.readAsText(file);
+  hiddenFileInput.value = '';
+});
+document.body.appendChild(hiddenFileInput);
+
+const fSession = gui.addFolder('Session');
+fSession.add({ save: () => {
+  const data = snapshotSession();
+  const blob = new Blob([JSON.stringify(data, null, 2)],
+                        { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url; a.download = `svase_session_${stamp}.json`; a.click();
+  URL.revokeObjectURL(url);
+}}, 'save').name('Save session (JSON)');
+
+fSession.add({ load: () => hiddenFileInput.click() }, 'load')
+        .name('Load session (JSON)');
+
+// — Export STL with carved signature —
+// We build the text mesh, position it overlapping the bin's bottom
+// 0.2 mm layer, and SUBTRACT it from the bin via three-bvh-csg.
+// The result is a single solid with the @Amitkuzi text carved into
+// the underside — vase-mode compatible (no extra solids, no
+// supports needed).
+const exp = new STLExporter();
+
+function makeSigCarveGeometry() {
+  if (!P.sig_enabled || !P.sig_text || !svaseFont) return null;
+  // Total cutter height — overshoots the bin's bottom by `margin` so
+  // the subtraction has a clean exit surface.
+  const margin = 0.3;
+  const carveH = P.sig_depth + margin;
+  let geom = new TextGeometry(P.sig_text, {
+    font: svaseFont,
+    size: P.sig_size,
+    depth: carveH,
+    curveSegments: 6,
+    bevelEnabled: false,
+  });
+  geom.center();
+  // Mirror in X so the engraving READS CORRECTLY when the user flips
+  // the printed bin over to look at its underside. `rotateY(π)` is a
+  // proper rotation (det = +1), so face winding stays consistent and
+  // CSG works without index-flipping. (It also negates Z, but the
+  // text's Z bbox is symmetric so the cut volume is unchanged.)
+  geom.rotateY(Math.PI);
+  // After center+rotate, Z bbox is still [-carveH/2, +carveH/2].
+  // We want: top of text at z = sig_depth (= carve floor inside bin),
+  //          bottom of text at z = -margin (sticks out below the bin).
+  geom.translate(0, 0, (P.sig_depth - margin) / 2);
+
+  // three-bvh-csg works best on INDEXED manifold geometry. TextGeometry
+  // ships as a non-indexed soup of triangles → merge identical verts
+  // to recover a proper index buffer and shared edges between chars.
+  try {
+    geom = mergeVertices(geom, 1e-4);
+    geom.computeVertexNormals();
+  } catch (e) {
+    console.warn('OneWall: mergeVertices on signature failed', e);
+  }
+  return geom;
+}
+
+async function exportSTL() {
+  stats.textContent = 'preparing STL…';
+  await new Promise(r => requestAnimationFrame(r));
+
+  let exportRoot = printGroup;
+  let carvedMesh = null;
+  let sigGeom    = null;
+  let carveOK    = false;
+
+  if (typeof Brush !== 'function' || typeof Evaluator !== 'function') {
+    stats.textContent = '⚠ CSG library failed to load — exporting bin only';
+    console.warn('OneWall: three-bvh-csg not available');
+  } else {
+    sigGeom = makeSigCarveGeometry();
+    if (!sigGeom) {
+      stats.textContent = 'signature disabled — exporting bin only';
+    } else {
+      try {
+        const t0 = performance.now();
+        stats.textContent = 'carving signature…';
+        await new Promise(r => requestAnimationFrame(r));
+
+        // Clone + reindex the bin geom so we don't mutate the preview mesh.
+        let binGeom = binMesh.geometry.clone();
+        binGeom = mergeVertices(binGeom, 1e-4);
+        binGeom.computeVertexNormals();
+
+        const binBrush = new Brush(binGeom);
+        binBrush.updateMatrixWorld();
+        const sigBrush = new Brush(sigGeom);
+        sigBrush.updateMatrixWorld();
+
+        const evaluator = new Evaluator();
+        evaluator.useGroups   = false;
+        evaluator.attributes  = ['position', 'normal'];
+
+        const result = evaluator.evaluate(binBrush, sigBrush, SUBTRACTION);
+        result.geometry.computeVertexNormals();
+
+        // Sanity check: result should have fewer faces than the bin
+        // if the carve actually subtracted volume. If it has more,
+        // the carve worked (CSG splits faces around the cut).
+        const binFaces    = (binGeom.index ? binGeom.index.count : binGeom.attributes.position.count) / 3;
+        const resultFaces = (result.geometry.index ? result.geometry.index.count : result.geometry.attributes.position.count) / 3;
+        console.log(`OneWall CSG: bin=${binFaces} → result=${resultFaces} faces`);
+
+        if (Math.abs(resultFaces - binFaces) < 4) {
+          throw new Error('CSG produced no change — sig may not overlap bin');
+        }
+
+        carvedMesh = result;
+        exportRoot = new THREE.Group();
+        exportRoot.add(carvedMesh);
+        carveOK    = true;
+
+        const dt = (performance.now() - t0).toFixed(0);
+        stats.textContent = `✓ carved in ${dt} ms — writing STL…`;
+        await new Promise(r => requestAnimationFrame(r));
+      } catch (err) {
+        console.error('OneWall CSG carve failed:', err);
+        stats.textContent = '⚠ carve failed: ' + err.message + ' — exporting bin only';
+        exportRoot = printGroup;
+      }
+    }
+  }
+
+  const stl  = exp.parse(exportRoot, { binary: true });
+  const blob = new Blob([stl], { type: 'application/octet-stream' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'onewall_bin.stl'; a.click();
+  URL.revokeObjectURL(url);
+
+  if (carvedMesh) carvedMesh.geometry.dispose();
+  if (sigGeom)    sigGeom.dispose();
+
+  if (carveOK) stats.textContent = '✓ STL with engraved signature exported';
+}
+
+gui.add({ exportSTL }, 'exportSTL').name('Download STL (engraved)');
+
+// ════════════════════════════════════════════════════════════
+//  RESIZE + RENDER LOOP
+// ════════════════════════════════════════════════════════════
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+function loop() {
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

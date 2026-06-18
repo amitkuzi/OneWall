@@ -1,0 +1,22 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# OpenSCAD scratch
+*.bak
+*.csg
+
+# Slicer outputs (project ships a fresh .3mf, not user prints)
+*.gcode
+*.3mf.bak
+
+# Session JSON dumps from preview.html — local only
+session_*.json
+svase_session_*.json
+onewall_session_*.json
+
+# STL exports — derived artifacts, regenerate from .scad / preview.html
+*.stl
