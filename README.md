@@ -34,14 +34,17 @@ continuous wall — the model is delivered as a solid body.
 | File | Purpose |
 |------|---------|
 | `onewall.scad` | Main parametric script (Customizer-ready) |
-| `preview.html`   | Instant browser preview — same math in Three.js, with lighting controls + STL export |
+| `index.html`   | Instant browser preview — same math in Three.js, with lighting controls + STL export |
 | `README.md`      | This file |
 
 ## Live Web Preview
 
-Open `preview.html` directly in any modern desktop browser (Chrome,
+🌐 **Hosted on GitHub Pages:**
+<https://amitkuzi.github.io/OneWall/>
+
+Or open `index.html` directly in any modern desktop browser (Chrome,
 Edge, Firefox, Safari 16.4+). Everything is self-contained — Three.js,
-OrbitControls and lil-gui load from CDN.
+OrbitControls, lil-gui and three-bvh-csg load from CDN.
 
 What you get:
 - The exact same geometry math as the `.scad` file, recomputed on
@@ -63,8 +66,8 @@ What you get:
 > the parameters in OpenSCAD or in the MakerWorld Customizer.
 
 If your browser blocks the `file://` ES-module imports (rare), just
-serve the folder: `python -m http.server` from the `scad/` directory,
-then open <http://localhost:8000/preview.html>.
+serve the folder: `python -m http.server` from the repo root,
+then open <http://localhost:8000/>.
 
 
 
