@@ -85,14 +85,31 @@ then open <http://localhost:8000/>.
 
 ## Print Settings (Vase Mode)
 
-| Slicer        | Setting |
-|---------------|---------|
+> ### ⚠ Critical setting for the `@Amitkuzi` signature
+>
+> **Bottom shell layers must be ≥ 2** (3 is ideal).
+>
+> The signature is engraved into the **first layer** of the print
+> (0.2 mm deep). If your slicer is set to only 1 bottom shell layer,
+> the engraving punches all the way through the floor and is
+> visible from inside the bin. With 2+ bottom layers, the upper
+> layers cover the engraving so it's visible **only from below** —
+> exactly what we want.
+>
+> | Slicer | Where to set it |
+> |--------|-----------------|
+> | Bambu Studio | Strength → **Bottom shell layers = 3** |
+> | PrusaSlicer  | Print Settings → Layers and perimeters → **Solid layers / Bottom = 3** |
+> | Cura         | Shell → **Bottom Layers = 3** |
+
+| Slicer        | Vase-mode toggle |
+|---------------|------------------|
 | Bambu Studio  | Strength → Wall loops = **1**, enable **Spiral vase** |
 | PrusaSlicer   | Print Settings → Layers → **Spiral vase = ON** |
 | Cura          | Special Modes → **Spiralize Outer Contour = ON** |
 
-Recommended:
-- Solid bottom layers: **3–5**
+Other recommended settings:
+- **Bottom shell layers: 3** (= 0.6 mm with 0.2 mm layer height — see warning above)
 - Layer height: **0.2 mm**
 - Line / nozzle width: **0.4 mm** (matches a single wall)
 - Material: PLA or PETG works well; brim helps tall slim shapes.

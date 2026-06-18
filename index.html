@@ -242,11 +242,41 @@
       <a href="https://github.com/amitkuzi/OneWall"   target="_blank" rel="noopener">OneWall repo</a>
     </div>
 
+    <h3>⚠ Slicer settings — required for the bottom signature</h3>
+    <p>
+      The <code>@Amitkuzi</code> engraving is one layer deep (0.2 mm).
+      In your slicer set <strong>Bottom shell layers ≥ 2</strong>
+      (recommended: 3). With only 1 bottom shell layer the engraving
+      punches through the floor and is visible from inside the bin.
+      With 2+ bottom layers it's hidden inside the bottom and visible
+      <strong>only when you flip the print over</strong>.
+    </p>
+    <table>
+      <tr>
+        <th>Slicer</th><th>Vase mode</th><th>Bottom shell</th>
+      </tr>
+      <tr>
+        <td>Bambu Studio</td>
+        <td>Strength → Spiral vase ON, Wall loops 1</td>
+        <td>Strength → Bottom shell layers = 3</td>
+      </tr>
+      <tr>
+        <td>PrusaSlicer</td>
+        <td>Layers → Spiral vase ON</td>
+        <td>Solid layers / Bottom = 3</td>
+      </tr>
+      <tr>
+        <td>Cura</td>
+        <td>Special Modes → Spiralize Outer Contour ON</td>
+        <td>Shell → Bottom Layers = 3</td>
+      </tr>
+    </table>
+
     <h3>License &amp; credits</h3>
     <p>
       OneWall is released under <strong>CC BY 4.0</strong>. Built with
-      OpenSCAD, Three.js and lil-gui. Every print carries the
-      <code>@Amitkuzi</code> bottom signature.
+      OpenSCAD, Three.js, lil-gui and three-bvh-csg. Every print
+      carries the <code>@Amitkuzi</code> bottom signature.
     </p>
 
     <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
