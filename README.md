@@ -124,7 +124,7 @@ Other recommended settings:
 | **Section Heights**      | `low_h`, `high_h` (MID = remainder) |
 | **Low — Base Transition**| `base_scale`, `low_curve` |
 | **Mid — Vertical Profile**| `mid_top_scale`, `mid_profile` (linear / barrel / hourglass / ogee / bell / doubleBulge / custom), `mid_profile_amt` |
-| **Mid — Wall Texture**   | `wall_texture` (smooth / ribs / rings / grid / fabric / basket / diamond / diagonal / knurl / wave), `tex_amp`, `tex_x`, `tex_z` |
+| **Mid — Wall Texture**   | `wall_texture` (smooth / ribs / rings / grid / fabric / basket / diamond / diagonal / knurl / wave / kumikoKaku / kumikoDiamond / kumikoTriangle / kumikoAsanoha), `tex_amp`, `tex_x`, `tex_z` |
 | **Mid — Decorative Wave**| `wave_amp`, `wave_lobes`, `wave_twist` |
 | **High — Lip / Top Rim**| `lip_style` (smooth / rolled / flange / bead / ribbed), `lip_peak_scale`, `lip_top_scale`, `lip_ribs`, `lip_rib_amp` |
 | **Optional — Label**     | `label_slot`, `label_w`, `label_h`, `label_z`, `label_d` |
@@ -196,6 +196,7 @@ The wall is a single nozzle-wide spiral, so geometry — not material
 — provides stiffness. Best results with crossed textures:
 
 - **grid**, **fabric**, **diamond**, **knurl** — crossed ribs, highest stiffness
+- **kumikoKaku**, **kumikoDiamond**, **kumikoTriangle**, **kumikoAsanoha** — Japanese 組子 lattice motifs; crossed strips add stiffness while looking decorative
 - **ribs**, **rings** — single-direction stiffening
 - **wave**, **smooth** — decorative, lowest stiffness
 - Higher `tex_amp` and tighter spacing (`tex_x`, `tex_z`) → stiffer wall

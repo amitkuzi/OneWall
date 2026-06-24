@@ -75,8 +75,9 @@ mid_custom_phase  = 0;    // [0:5:360]
 
 /* [Mid — Wall Texture] */
 
-// Pattern preset — crossed patterns (grid/fabric/diamond/knurl) add stiffness
-wall_texture = "grid"; // [smooth, ribs, rings, grid, fabric, basket, diamond, diagonal, knurl, wave]
+// Pattern preset — crossed patterns (grid/fabric/diamond/knurl) add stiffness;
+// kumiko* presets are Japanese lattice motifs (raised strips, recessed cells)
+wall_texture = "grid"; // [smooth, ribs, rings, grid, fabric, basket, diamond, diagonal, knurl, wave, kumikoKaku, kumikoDiamond, kumikoTriangle, kumikoAsanoha]
 // Texture depth amplitude (mm)
 tex_amp     = 0.9;  // [0:0.05:3]
 // Cycles around the perimeter (vertical features)
@@ -279,9 +280,19 @@ function vprofile_offset(z) =
          fz = fade(z))
         fz * mid_profile_amt * profile_curve(t);
 
+// ── KUMIKO LATTICE HELPERS ───────────────────────────────────
+// Kumiko (組子) = traditional Japanese geometric lattice. On a
+// vase-mode wall it is approximated as a displacement map: thin
+// raised strips trace the lattice lines, cells recess between.
+// kridge(x) → sharp ridge peaking at every integer of x (one
+// lattice line per cycle); kmax3 unions three line families.
+function kridge(x) = pow((1 + cos(360 * x)) / 2, 6);
+function kmax3(a, b, c) = max(a, max(b, c));
+
 // ── WALL TEXTURE — chosen preset ─────────────────────────────
 // s ∈ [0,1) around the perimeter,  tz ∈ [0,1] up the height.
 function tex(s, tz) =
+    let (kx = tex_x * s, kz = tex_z * tz)
     wall_texture == "smooth"   ? 0 :
     wall_texture == "ribs"     ? cos(360 * tex_x * s) :
     wall_texture == "rings"    ? cos(360 * tex_z * tz) :
@@ -298,6 +309,20 @@ function tex(s, tz) =
     wall_texture == "knurl"    ? 0.5 * (cos(360 * tex_x * (s + 0.5 * tz))
                                       + cos(360 * tex_x * (s - 0.5 * tz))) :
     wall_texture == "wave"     ? cos(360 * wave_lobes * s + wave_twist * tz) :
+    // Kumiko square grid (kaku-tsunagi) — two orthogonal line families
+    wall_texture == "kumikoKaku"     ? 2 * max(kridge(kx), kridge(kz)) - 1 :
+    // Kumiko diagonal lattice (bishamon-style) — crossed diagonals
+    wall_texture == "kumikoDiamond"  ? 2 * max(kridge(kx + kz),
+                                               kridge(kx - kz)) - 1 :
+    // Kumiko triangular lattice (kagome) — three families at 60°
+    wall_texture == "kumikoTriangle" ? 2 * kmax3(kridge(kz),
+                                                 kridge(kz/2 + kx),
+                                                 kridge(kz/2 - kx)) - 1 :
+    // Kumiko hemp-leaf (asanoha) — kagome frame + phase-shifted inner spokes
+    wall_texture == "kumikoAsanoha"  ? 2 * max(
+            kmax3(kridge(kz),       kridge(kz/2 + kx),       kridge(kz/2 - kx)),
+            0.85 * kmax3(kridge(kz + 0.5), kridge(kz/2 + kx + 0.5),
+                                          kridge(kz/2 - kx + 0.5))) - 1 :
     0;
 
 // ── TOTAL RADIAL DISPLACEMENT (along outward normal) ─────────
@@ -386,6 +411,11 @@ svase();
 //   • grid / fabric / diamond / knurl — crossed ribs, strongest
 //   • ribs / rings — single-direction stiffening
 //   • wave / smooth — decorative, lowest stiffness
+//   • kumikoKaku / kumikoDiamond / kumikoTriangle / kumikoAsanoha
+//       — Japanese lattice motifs (組子). Stylized displacement:
+//         thin raised strips trace the lattice, cells recess between.
+//         tex_x sets strips around the perimeter, tex_z up the height;
+//         match them for an even mesh. Higher tex_amp = deeper relief.
 //   • Higher tex_amp and tighter spacing = stiffer wall
 //
 //  Vertical profiles:

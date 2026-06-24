@@ -3,6 +3,37 @@
 <head>
 <meta charset="UTF-8">
 <title>OneWall — Vase-Mode Bin & Container Customizer</title>
+
+<!-- ── Google Analytics 4 ──────────────────────────────────────
+     Replace G-XXXXXXXXXX below with your own Measurement ID from
+     analytics.google.com → Admin → Data Streams → (your web stream).
+     Until you do, no data is collected. -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
+
+  // Consent Mode v2 — default everything to DENIED so no analytics
+  // cookies are set until the visitor accepts via the banner below.
+  // A stored choice is replayed here so returning visitors skip it.
+  var owConsent = null;
+  try { owConsent = localStorage.getItem('ow_consent'); } catch (e) {}
+  gtag('consent', 'default', {
+    ad_storage:         'denied',
+    ad_user_data:       'denied',
+    ad_personalization: 'denied',
+    analytics_storage:  owConsent === 'granted' ? 'granted' : 'denied',
+    wait_for_update:    500
+  });
+
+  gtag('js', new Date());
+  gtag('config', 'G-XXXXXXXXXX');
+  // Safe wrapper — used for custom events; no-ops if GA is blocked.
+  window.owTrack = (name, params) => {
+    try { gtag('event', name, params || {}); } catch (e) {}
+  };
+</script>
+
 <style>
   :root {
     --bg: #1a1a1d;
@@ -167,6 +198,37 @@
   html[dir="rtl"] .lil-gui.root {
     right: auto !important; left: 0 !important;
   }
+
+  /* ── Cookie-consent banner ──────────────────────────── */
+  #cookie-banner {
+    position: fixed; bottom: 12px; left: 12px; right: 12px;
+    max-width: 560px; margin: 0 auto;
+    background: var(--modal-bg, #20222a);
+    color: var(--fg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px; z-index: 50;
+    box-shadow: 0 16px 48px rgba(0,0,0,.55);
+    display: none; align-items: center; gap: 14px;
+    font-size: 13px; line-height: 1.45;
+  }
+  #cookie-banner.show { display: flex; }
+  #cookie-banner p { margin: 0; flex: 1; }
+  #cookie-banner a { color: var(--accent); text-decoration: none; }
+  #cookie-banner a:hover { text-decoration: underline; }
+  #cookie-banner .actions { display: flex; gap: 8px; flex-shrink: 0; }
+  #cookie-banner button {
+    font-family: inherit; font-size: 12px; cursor: pointer;
+    padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--fg);
+  }
+  #cookie-banner button.accept {
+    background: var(--accent); border-color: var(--accent); color: #0c1018;
+    font-weight: 600;
+  }
+  #cookie-banner button:hover { border-color: var(--accent); }
+  @media (max-width: 480px) {
+    #cookie-banner { flex-direction: column; align-items: stretch; }
+    #cookie-banner .actions { justify-content: flex-end; }
+  }
 </style>
 </head>
 <body>
@@ -176,7 +238,7 @@
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Bin & Container Customizer</span>
-    <span class="ver">v0.1-0618-202002</span>
+    <span class="ver">v0.1-0624-195139</span>
   </div>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
@@ -283,7 +345,7 @@
     </p>
 
     <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
-      OneWall · v0.1-0618-202002
+      OneWall · v0.1-0624-195139
     </p>
   </div>
 </dialog>
@@ -296,6 +358,18 @@
 <div id="sig-badge">
   <span class="label">bottom signature:</span>
   <span id="sig-badge-text">@Amitkuzi</span>
+</div>
+
+<!-- ───── Cookie-consent banner (Google Consent Mode v2) ───── -->
+<div id="cookie-banner" role="dialog" aria-live="polite" aria-label="Cookie consent">
+  <p>
+    OneWall uses Google Analytics to count visits and STL exports — that's
+    how I know the tool is useful. Analytics cookies stay off until you accept.
+  </p>
+  <div class="actions">
+    <button type="button" class="decline" id="cookie-decline">Decline</button>
+    <button type="button" class="accept"  id="cookie-accept">Accept</button>
+  </div>
 </div>
 
 <script>
@@ -318,6 +392,29 @@
     langBtn.textContent = currentLang.toUpperCase();
     // Real translation happens in Phase 2.
   });
+
+  // ── Cookie-consent banner ──────────────────────────────
+  // Only shown when the visitor hasn't chosen yet. Accept flips
+  // Google Consent Mode v2 analytics_storage to granted and
+  // persists the choice so it's remembered on the next visit.
+  (function () {
+    const banner = document.getElementById('cookie-banner');
+    let stored = null;
+    try { stored = localStorage.getItem('ow_consent'); } catch (e) {}
+    if (!stored) banner.classList.add('show');
+
+    const choose = (value) => {
+      try { localStorage.setItem('ow_consent', value); } catch (e) {}
+      if (value === 'granted' && window.gtag) {
+        gtag('consent', 'update', { analytics_storage: 'granted' });
+      }
+      banner.classList.remove('show');
+    };
+    document.getElementById('cookie-accept' )
+      .addEventListener('click', () => choose('granted'));
+    document.getElementById('cookie-decline')
+      .addEventListener('click', () => choose('denied'));
+  })();
 </script>
 
 <script type="importmap">
@@ -499,8 +596,14 @@ function buildGeometry() {
     return fade(z) * P.mid_profile_amt * profileCurve(t);
   };
 
+  // Kumiko (組子) lattice helpers — sharp ridge per cycle of x;
+  // km3 unions three line families into one lattice.
+  const kr  = x => Math.pow((1 + Math.cos(2 * Math.PI * x)) / 2, 6);
+  const km3 = (a, b, c) => Math.max(a, Math.max(b, c));
+
   const tex = (s, tz) => {
     const C = Math.cos, S = Math.sin, TAU = 2 * Math.PI;
+    const X = P.tex_x * s, Z = P.tex_z * tz;
     switch (P.wall_texture) {
       case 'smooth':   return 0;
       case 'ribs':     return C(TAU * P.tex_x * s);
@@ -514,6 +617,17 @@ function buildGeometry() {
       case 'knurl':    return 0.5 * (C(TAU * P.tex_x * (s + 0.5 * tz))
                                    + C(TAU * P.tex_x * (s - 0.5 * tz)));
       case 'wave':     return C(TAU * P.wave_lobes * s + P.wave_twist * D2R * tz);
+      // Kumiko square grid (kaku-tsunagi)
+      case 'kumikoKaku':     return 2 * Math.max(kr(X), kr(Z)) - 1;
+      // Kumiko diagonal lattice (bishamon-style)
+      case 'kumikoDiamond':  return 2 * Math.max(kr(X + Z), kr(X - Z)) - 1;
+      // Kumiko triangular lattice (kagome) — three families at 60°
+      case 'kumikoTriangle': return 2 * km3(kr(Z), kr(Z/2 + X), kr(Z/2 - X)) - 1;
+      // Kumiko hemp-leaf (asanoha) — kagome frame + phase-shifted inner spokes
+      case 'kumikoAsanoha':  return 2 * Math.max(
+                               km3(kr(Z), kr(Z/2 + X), kr(Z/2 - X)),
+                               0.85 * km3(kr(Z + 0.5), kr(Z/2 + X + 0.5),
+                                                       kr(Z/2 - X + 0.5))) - 1;
       default:         return 0;
     }
   };
@@ -782,7 +896,8 @@ fMid.add(P, 'mid_custom_phase',   0, 360, 5  ).onChange(scheduleRebuild);
 const fTex = gui.addFolder('Mid — Wall Texture');
 fTex.add(P, 'wall_texture',
   ['smooth','ribs','rings','grid','fabric','basket',
-   'diamond','diagonal','knurl','wave']
+   'diamond','diagonal','knurl','wave',
+   'kumikoKaku','kumikoDiamond','kumikoTriangle','kumikoAsanoha']
 ).onChange(scheduleRebuild);
 fTex.add(P, 'tex_amp',  0,   3, 0.05).onChange(scheduleRebuild);
 fTex.add(P, 'tex_x',    4, 200, 1   ).onChange(scheduleRebuild);
@@ -951,6 +1066,7 @@ fSession.add({ save: () => {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   a.href = url; a.download = `svase_session_${stamp}.json`; a.click();
   URL.revokeObjectURL(url);
+  window.owTrack && owTrack('session_save', { wall_texture: P.wall_texture });
 }}, 'save').name('Save session (JSON)');
 
 fSession.add({ load: () => hiddenFileInput.click() }, 'load')
@@ -1073,6 +1189,14 @@ async function exportSTL() {
   const a    = document.createElement('a');
   a.href = url; a.download = 'onewall_bin.stl'; a.click();
   URL.revokeObjectURL(url);
+
+  // Analytics — the main "tool was used" signal.
+  window.owTrack && owTrack('stl_export', {
+    wall_texture: P.wall_texture,
+    lip_style:    P.lip_style,
+    mid_profile:  P.mid_profile,
+    signature:    P.sig_enabled
+  });
 
   if (carvedMesh) carvedMesh.geometry.dispose();
   if (sigGeom)    sigGeom.dispose();
