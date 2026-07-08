@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(*)",
+       "Read",
+      "Edit",
+      "Bash(*)",
+      "Bash (npm*)",
+      "Bash (git*)",
+      "git (*)",
+      "WebSearch"
+    ],
+    "deny": [
+      "Bash(rm:*)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}
