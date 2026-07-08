@@ -68,6 +68,36 @@ for (const ux of MULTIPLIERS) {
      `bin ${ux}x1 volume ${Math.round(vol)} mm³ is positive and < bounding box`);
 }
 
+// per-cell feet: a 2x2 bin must have 4 separate 42 mm-pitch feet
+// so it seats on a standard baseplate (regression: merged base bug)
+console.log('4b. per-cell feet');
+{
+  const bin = buildBin({ units_x: 2, units_y: 2, height_units: 3 });
+  ok(bin.feet === 4, '2x2 bin has 4 feet');
+  // vertices near z=0 must cluster around cell centres (±21, ±21)
+  // and leave a gap at the cell boundary (x ≈ 0)
+  const { positions } = bin;
+  let minAbsX = Infinity, maxX = 0;
+  for (let i = 0; i < positions.length; i += 3)
+    if (positions[i + 2] < 0.01) {
+      minAbsX = Math.min(minAbsX, Math.abs(positions[i]));
+      maxX = Math.max(maxX, Math.abs(positions[i]));
+    }
+  ok(minAbsX > 1, `feet leave a gap at the cell boundary (|x| ≥ ${minAbsX.toFixed(1)})`);
+  const expectMax = GF.PITCH / 2 + footprint(1) / 2 - baseInset(0);
+  ok(Math.abs(maxX - expectMax) < 0.2,
+     `foot bottoms land on the 42 mm grid (max |x| = ${maxX.toFixed(2)} ≈ ${expectMax})`);
+  // each 1u foot at its widest still fits a standard socket
+  ok(footprint(1) < footprint(1) + 2 * GF.CLEAR, '1u foot < standard socket opening');
+
+  const one = buildBin({ units_x: 1, units_y: 1 });
+  ok(one.feet === 1, '1x1 bin has a single foot');
+  const halfBin = buildBin({ units_x: 0.5, units_y: 0.5 });
+  ok(halfBin.feet === 1, '0.5x0.5 bin has a single sub-unit foot');
+  const four = buildBin({ units_x: 4, units_y: 2 });
+  ok(four.feet === 8, '4x2 bin has 8 feet');
+}
+
 // spiral ribs stay manifold and don't change footprint beyond amplitude
 const ribbed = buildBin({ units_x: 2, units_y: 2, height_units: 6,
                           ribs: 24, rib_amp: 0.6, rib_twist: 2 });

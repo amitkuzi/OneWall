@@ -143,10 +143,31 @@ function shellFromLayers(layers, zs) {
   return { positions, indices };
 }
 
-// ── Bin (vase-mode / spiral printable) ──────────────────────
-// One continuous outer wall: Gridfinity base profile around the
-// whole footprint, then straight (or textured) wall to the top.
-// Delivered solid — the slicer's spiral/vase mode makes the wall.
+// Merge several {positions, indices} parts into one buffer set.
+function mergeParts(parts) {
+  let nv = 0, ni = 0;
+  for (const p of parts) { nv += p.positions.length; ni += p.indices.length; }
+  const positions = new Float32Array(nv);
+  const indices = new Uint32Array(ni);
+  let vo = 0, io = 0;
+  for (const p of parts) {
+    positions.set(p.positions, vo * 3);
+    for (let i = 0; i < p.indices.length; i++)
+      indices[io + i] = p.indices[i] + vo;
+    vo += p.positions.length / 3;
+    io += p.indices.length;
+  }
+  return { positions, indices };
+}
+
+// ── Bin (spiral body on per-cell feet) ──────────────────────
+// The base is a grid of standard Gridfinity feet — one per 42 mm
+// cell (or a single sub-unit foot for 0.5 bins) — so any bin size
+// drops onto a normal baseplate. Above the feet sits one continuous
+// wall body for the slicer's spiral/vase mode.
+//
+// Print: bottom shell layers ≥ 26 (≈ 5.2 mm at 0.2 mm) so the feet
+// and the deck above them are solid before the spiral wall starts.
 export function buildBin(params = {}) {
   const {
     units_x = 1, units_y = 1, height_units = 3,
@@ -158,36 +179,54 @@ export function buildBin(params = {}) {
   const w = footprint(units_x);
   const d = footprint(units_y);
   const height = GF.BASE_H + height_units * GF.HU;
+  const OVERLAP = 0.1;   // feet poke into the body so the union fuses
 
-  // z levels: exact base-profile breakpoints, then uniform to top
-  const zs = [0, GF.BASE.C1, GF.BASE.C1 + GF.BASE.S, GF.BASE_H];
+  const parts = [];
+
+  // Feet — one per whole grid cell; sub-unit bins get one small foot
+  const nx = units_x < 1 ? 1 : Math.round(units_x);
+  const ny = units_y < 1 ? 1 : Math.round(units_y);
+  const fw = footprint(units_x < 1 ? units_x : 1);
+  const fd = footprint(units_y < 1 ? units_y : 1);
+  const footRing = roundedRectRing(fw, fd, corner_r, spacing);
+  const footZs = [0, GF.BASE.C1, GF.BASE.C1 + GF.BASE.S,
+                  GF.BASE_H, GF.BASE_H + OVERLAP];
+  const x0 = -(nx - 1) * GF.PITCH / 2;
+  const y0 = -(ny - 1) * GF.PITCH / 2;
+  for (let ix = 0; ix < nx; ix++)
+    for (let iy = 0; iy < ny; iy++) {
+      const cx = x0 + ix * GF.PITCH, cy = y0 + iy * GF.PITCH;
+      const layers = footZs.map(z =>
+        offsetRing(footRing, baseInset(z)).map(p => [p[0] + cx, p[1] + cy]));
+      parts.push(shellFromLayers(layers, footZs));
+    }
+
+  // Body — one continuous outline from the top of the feet up
+  const ring = roundedRectRing(w, d, corner_r, spacing);
+  const M = ring.length;
+  const zs = [GF.BASE_H];
   const wallSteps = Math.max(1, Math.ceil((height - GF.BASE_H) / layer_step));
   for (let i = 1; i <= wallSteps; i++)
     zs.push(GF.BASE_H + (height - GF.BASE_H) * i / wallSteps);
 
-  const ring = roundedRectRing(w, d, corner_r, spacing);
-  const M = ring.length;
-
-  // Wall layers: base profile inset, plus optional spiral rib
-  // texture (per-point offset along the outward normal) above it.
   const layers = zs.map(z => {
-    const base = offsetRing(ring, baseInset(z));
-    if (!ribs || !rib_amp || z <= GF.BASE_H) return base;
+    if (!ribs || !rib_amp) return ring;
     const tz = (z - GF.BASE_H) / Math.max(height - GF.BASE_H, 0.001);
-    return base.map((p, k) => {
+    return ring.map((p, k) => {
       const off = rib_amp *
         Math.cos(2 * Math.PI * (ribs * (k / M) + rib_twist * tz));
-      const q = base[(k + 1) % M], o = base[(k - 1 + M) % M];
+      const q = ring[(k + 1) % M], o = ring[(k - 1 + M) % M];
       const tx = q[0] - o[0], ty = q[1] - o[1];
       const tl = Math.hypot(tx, ty) || 1;
       return [p[0] + (ty / tl) * off, p[1] + (-tx / tl) * off];
     });
   });
+  parts.push(shellFromLayers(layers, zs));
 
-  const { positions, indices } = shellFromLayers(layers, zs);
+  const { positions, indices } = mergeParts(parts);
   return {
     positions, indices,
-    width: w, depth: d, height,
+    width: w, depth: d, height, feet: nx * ny,
     verts: positions.length / 3, tris: indices.length / 3,
   };
 }
@@ -272,24 +311,11 @@ export function buildBaseplate(params = {}) {
     for (let iy = 0; iy < cells_y; iy++)
       parts.push(cellMesh(x0 + ix * cell, y0 + iy * cell));
 
-  // Merge parts into one buffer
-  let nv = 0, ni = 0;
-  for (const p of parts) { nv += p.positions.length; ni += p.indices.length; }
-  const positions = new Float32Array(nv);
-  const indices = new Uint32Array(ni);
-  let vo = 0, io = 0;
-  for (const p of parts) {
-    positions.set(p.positions, vo * 3);
-    for (let i = 0; i < p.indices.length; i++)
-      indices[io + i] = p.indices[i] + vo;
-    vo += p.positions.length / 3;
-    io += p.indices.length;
-  }
-
+  const { positions, indices } = mergeParts(parts);
   return {
     positions, indices,
     width: cells_x * cell, depth: cells_y * cell, height: plate_h,
-    verts: nv / 3, tris: ni / 3,
+    verts: positions.length / 3, tris: indices.length / 3,
   };
 }
 

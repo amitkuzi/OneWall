@@ -6,7 +6,8 @@
 //  Customizer-ready for MakerWorld / Printables / Thangs.
 //  Companion of the OneWall web preview (index.html → Gridfinity).
 //
-//  Bin: print with Spiral vase ON, bottom shell layers ≥ 3.
+//  Bin: print with Spiral vase ON, bottom shell layers ≥ 26
+//  (≈ 5.2 mm at 0.2 mm layers — keeps the per-cell feet solid).
 //  Baseplate: normal mode, 2 perimeters, no infill needed.
 //
 //  License: CC BY 4.0 — @Amitkuzi
@@ -66,19 +67,38 @@ module slice(w, d, r, z, in) {
       rrect(w - 2*in, d - 2*in, max(r - in, 0.3));
 }
 
-// ── Bin — solid body, slicer spiralizes the outer wall ──────
-// Base profile bottom-up: chamfer 0.8, straight 1.8, chamfer 2.15,
-// then a straight wall of height_units * 7 mm.
+// ── Bin — spiral body on per-cell feet ──────────────────────
+// The base is one standard Gridfinity foot PER 42 mm CELL (a 2x2
+// bin gets 4 feet), so any size seats on a normal baseplate.
+// Sub-unit (0.5) bins get a single small foot for 21 mm plates.
+// Above the feet: one continuous wall for spiral/vase printing.
+//
+// PRINT: Spiral vase ON + bottom shell layers ≥ 26 (≈ 5.2 mm at
+// 0.2 mm layers) so the feet and deck are solid before the spiral
+// wall starts.
+module gridfinity_foot(fw, fd) {
+  hull() { slice(fw, fd, corner_r, 0,                BASE_INSET);
+           slice(fw, fd, corner_r, BASE_C1,          BASE_C2); }
+  hull() { slice(fw, fd, corner_r, BASE_C1,          BASE_C2);
+           slice(fw, fd, corner_r, BASE_C1 + BASE_S, BASE_C2); }
+  hull() { slice(fw, fd, corner_r, BASE_C1 + BASE_S, BASE_C2);
+           slice(fw, fd, corner_r, BASE_H + 0.1,     0); }
+}
+
 module gridfinity_bin(ux = units_x, uy = units_y, hu = height_units) {
-  w = footprint(ux);
-  d = footprint(uy);
+  w  = footprint(ux);
+  d  = footprint(uy);
+  nx = ux < 1 ? 1 : round(ux);
+  ny = uy < 1 ? 1 : round(uy);
+  fw = footprint(min(ux, 1));
+  fd = footprint(min(uy, 1));
   union() {
-    hull() { slice(w, d, corner_r, 0,                 BASE_INSET);
-             slice(w, d, corner_r, BASE_C1,           BASE_C2); }
-    hull() { slice(w, d, corner_r, BASE_C1,           BASE_C2);
-             slice(w, d, corner_r, BASE_C1 + BASE_S,  BASE_C2); }
-    hull() { slice(w, d, corner_r, BASE_C1 + BASE_S,  BASE_C2);
-             slice(w, d, corner_r, BASE_H,            0); }
+    // feet on the 42 mm grid
+    translate([-(nx - 1) * PITCH / 2, -(ny - 1) * PITCH / 2, 0])
+      for (ix = [0 : nx - 1], iy = [0 : ny - 1])
+        translate([ix * PITCH, iy * PITCH, 0])
+          gridfinity_foot(fw, fd);
+    // continuous spiral body
     translate([0, 0, BASE_H])
       linear_extrude(hu * HU)
         rrect(w, d, corner_r);
