@@ -47,9 +47,13 @@ const fns = new Set([...code.matchAll(/function\s+(\w+)/g)].map(m => m[1]));
 for (const n of called)
   ok(defined.has(n) || fns.has(n), `'${n}' is defined`);
 
-// 4. customizer multipliers present
-ok(/units_x\s*=\s*1;\s*\/\/\s*\[0\.5, 1, 2, 4\]/.test(src), 'units_x offers 0.5/1/2/4');
+// 4. customizer ranges & leg multiplier
+ok(/units_x\s*=\s*1;\s*\/\/\s*\[0\.5:0\.5:8\]/.test(src), 'units_x range 0.5–8 in 0.5 steps');
+ok(/units_y\s*=\s*1;\s*\/\/\s*\[0\.5:0\.5:8\]/.test(src), 'units_y range 0.5–8 in 0.5 steps');
+ok(/leg_mult\s*=\s*1;\s*\/\/\s*\[0\.5, 1, 2\]/.test(src), 'leg_mult offers 0.5/1/2');
 ok(/cell_mult\s*=\s*1;\s*\/\/\s*\[0\.5, 1, 2, 4\]/.test(src), 'cell_mult offers 0.5/1/2/4');
+ok(/function\s+leg_fits/.test(src) && /function\s+eff_leg/.test(src),
+   'leg divisibility guard functions defined');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

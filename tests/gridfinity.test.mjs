@@ -1,7 +1,7 @@
 // Gridfinity Creator — geometry validation suite
 // Run: node tests/gridfinity.test.mjs
 import {
-  GF, MULTIPLIERS, footprint, baseInset, socketInset,
+  GF, MULTIPLIERS, LEG_MULTS, legFits, footprint, baseInset, socketInset,
   roundedRectRing, offsetRing, buildBin, buildBaseplate,
   meshVolume, manifoldReport,
 } from '../assets/gridfinity.js';
@@ -93,9 +93,47 @@ console.log('4b. per-cell feet');
   const one = buildBin({ units_x: 1, units_y: 1 });
   ok(one.feet === 1, '1x1 bin has a single foot');
   const halfBin = buildBin({ units_x: 0.5, units_y: 0.5 });
-  ok(halfBin.feet === 1, '0.5x0.5 bin has a single sub-unit foot');
+  ok(halfBin.feet === 1 && halfBin.leg_mult === 0.5,
+     '0.5x0.5 bin falls back to a single 0.5 foot');
   const four = buildBin({ units_x: 4, units_y: 2 });
   ok(four.feet === 8, '4x2 bin has 8 feet');
+}
+
+// leg-size multiplier: 0.5 → 21 mm, 1 → 42 mm, 2 → 84 mm legs
+console.log('4c. leg multiplier');
+{
+  ok(legFits(2, 1) && legFits(1.5, 0.5) && !legFits(1.5, 1) && !legFits(2.5, 2),
+     'legFits divisibility checks');
+
+  // user examples
+  const e1 = buildBin({ units_x: 1.5, units_y: 2.5, leg_mult: 0.5 });
+  ok(e1.feet === 15 && e1.leg_mult === 0.5, '1.5x2.5 + 0.5 legs → 3x5 = 15 legs of 21 mm');
+  const e2 = buildBin({ units_x: 4, units_y: 2, leg_mult: 2 });
+  ok(e2.feet === 2 && e2.leg_mult === 2, '4x2 + 2 legs → 2x1 = 2 legs of 84 mm');
+  const e3 = buildBin({ units_x: 2, units_y: 3, leg_mult: 0.5 });
+  ok(e3.feet === 24 && e3.leg_mult === 0.5, '2x3 + 0.5 legs → 4x6 = 24 legs of 21 mm');
+
+  // invalid combo falls back to 0.5 legs (always valid on 0.5 steps)
+  const bad = buildBin({ units_x: 1.5, units_y: 2, leg_mult: 2 });
+  ok(bad.leg_mult === 0.5 && bad.feet === 3 * 4,
+     '1.5x2 + 2 legs blocked → falls back to 0.5 legs (3x4)');
+
+  // geometry stays valid across leg sizes and large bins
+  for (const [ux, uy, m] of [[1.5, 2.5, 0.5], [4, 2, 2], [8, 0.5, 0.5], [8, 8, 2]]) {
+    const b = buildBin({ units_x: ux, units_y: uy, leg_mult: m, spacing: 3 });
+    const rep = manifoldReport(b);
+    ok(rep.ok, `${ux}x${uy} legs=${m} watertight (${b.feet} feet)`);
+    ok(near(b.width, footprint(ux), 1e-6), `${ux}x${uy} footprint width ok`);
+  }
+
+  // 84 mm legs land on the 84 mm grid: bottom verts of 4x2/leg2
+  const { positions } = e2;
+  let maxX = 0;
+  for (let i = 0; i < positions.length; i += 3)
+    if (positions[i + 2] < 0.01) maxX = Math.max(maxX, Math.abs(positions[i]));
+  const expect = 2 * GF.PITCH / 2 + footprint(2) / 2 - baseInset(0);
+  ok(Math.abs(maxX - expect) < 0.2,
+     `84 mm feet centred on the 84 mm grid (max |x| = ${maxX.toFixed(2)} ≈ ${expect})`);
 }
 
 // spiral ribs stay manifold and don't change footprint beyond amplitude

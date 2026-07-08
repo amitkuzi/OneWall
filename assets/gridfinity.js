@@ -20,6 +20,17 @@ export const GF = {
 };
 
 export const MULTIPLIERS = [0.5, 1, 2, 4];
+export const LEG_MULTS = [0.5, 1, 2];
+
+// Does leg size m tile bin size u exactly? (both in grid units)
+export const legFits = (u, m) =>
+  Math.abs(u / m - Math.round(u / m)) < 1e-9;
+
+// The leg size actually used for a bin: the requested one when it
+// tiles both axes, otherwise 0.5 — which always works, since bin
+// sizes come in 0.5-unit steps.
+export const effectiveLegMult = (ux, uy, m) =>
+  (legFits(ux, m) && legFits(uy, m)) ? m : 0.5;
 
 // Outer XY size of a bin spanning `units` grid cells.
 export const footprint = units => units * GF.PITCH - GF.FOOT_GAP;
@@ -170,7 +181,7 @@ function mergeParts(parts) {
 // and the deck above them are solid before the spiral wall starts.
 export function buildBin(params = {}) {
   const {
-    units_x = 1, units_y = 1, height_units = 3,
+    units_x = 1, units_y = 1, height_units = 3, leg_mult = 1,
     corner_r = 4, spacing = 2, layer_step = 1.5,
     // optional spiral rib texture on the wall above the base
     ribs = 0, rib_amp = 0, rib_twist = 0,
@@ -183,19 +194,23 @@ export function buildBin(params = {}) {
 
   const parts = [];
 
-  // Feet — one per whole grid cell; sub-unit bins get one small foot
-  const nx = units_x < 1 ? 1 : Math.round(units_x);
-  const ny = units_y < 1 ? 1 : Math.round(units_y);
-  const fw = footprint(units_x < 1 ? units_x : 1);
-  const fd = footprint(units_y < 1 ? units_y : 1);
+  // Feet — legs of leg_mult grid units (21/42/84 mm) tiling the
+  // footprint exactly; falls back to 0.5 when the size doesn't
+  // divide (the UI blocks those combos, this is the safety net).
+  const m = effectiveLegMult(units_x, units_y, leg_mult);
+  const pitch = m * GF.PITCH;
+  const nx = Math.round(units_x / m);
+  const ny = Math.round(units_y / m);
+  const fw = footprint(m);
+  const fd = footprint(m);
   const footRing = roundedRectRing(fw, fd, corner_r, spacing);
   const footZs = [0, GF.BASE.C1, GF.BASE.C1 + GF.BASE.S,
                   GF.BASE_H, GF.BASE_H + OVERLAP];
-  const x0 = -(nx - 1) * GF.PITCH / 2;
-  const y0 = -(ny - 1) * GF.PITCH / 2;
+  const x0 = -(nx - 1) * pitch / 2;
+  const y0 = -(ny - 1) * pitch / 2;
   for (let ix = 0; ix < nx; ix++)
     for (let iy = 0; iy < ny; iy++) {
-      const cx = x0 + ix * GF.PITCH, cy = y0 + iy * GF.PITCH;
+      const cx = x0 + ix * pitch, cy = y0 + iy * pitch;
       const layers = footZs.map(z =>
         offsetRing(footRing, baseInset(z)).map(p => [p[0] + cx, p[1] + cy]));
       parts.push(shellFromLayers(layers, footZs));
@@ -226,7 +241,7 @@ export function buildBin(params = {}) {
   const { positions, indices } = mergeParts(parts);
   return {
     positions, indices,
-    width: w, depth: d, height, feet: nx * ny,
+    width: w, depth: d, height, feet: nx * ny, leg_mult: m,
     verts: positions.length / 3, tris: indices.length / 3,
   };
 }

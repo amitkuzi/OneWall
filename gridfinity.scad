@@ -19,11 +19,14 @@ part = "bin"; // [bin, baseplate]
 
 /* [Bin size — Gridfinity units] */
 // width in grid units
-units_x = 1; // [0.5, 1, 2, 4]
+units_x = 1; // [0.5:0.5:8]
 // depth in grid units
-units_y = 1; // [0.5, 1, 2, 4]
+units_y = 1; // [0.5:0.5:8]
 // height in 7 mm units (above the 4.75 mm base)
 height_units = 3; // [1:0.5:12]
+// leg size: 0.5 = 21 mm, 1 = 42 mm, 2 = 84 mm. Must divide the bin
+// size on both axes; otherwise 0.5 legs are used (always valid).
+leg_mult = 1; // [0.5, 1, 2]
 
 /* [Baseplate] */
 // cells along X
@@ -53,6 +56,12 @@ BASE_INSET = BASE_C1 + BASE_C2;           // 2.95
 $fn = 48;
 
 function footprint(u) = u * PITCH - FOOT_GAP;
+
+// Does leg size m tile bin size u exactly?
+function leg_fits(u, m) = abs(u / m - round(u / m)) < 1e-6;
+// Requested leg size when it tiles both axes, else 0.5 (always valid)
+function eff_leg(ux, uy, m) =
+  (leg_fits(ux, m) && leg_fits(uy, m)) ? m : 0.5;
 
 // ── 2D rounded rectangle, centred ───────────────────────────
 module rrect(w, d, r) {
@@ -85,18 +94,21 @@ module gridfinity_foot(fw, fd) {
            slice(fw, fd, corner_r, BASE_H + 0.1,     0); }
 }
 
-module gridfinity_bin(ux = units_x, uy = units_y, hu = height_units) {
+module gridfinity_bin(ux = units_x, uy = units_y, hu = height_units,
+                      lm = leg_mult) {
   w  = footprint(ux);
   d  = footprint(uy);
-  nx = ux < 1 ? 1 : round(ux);
-  ny = uy < 1 ? 1 : round(uy);
-  fw = footprint(min(ux, 1));
-  fd = footprint(min(uy, 1));
+  m  = eff_leg(ux, uy, lm);   // leg size in grid units (0.5 / 1 / 2)
+  lp = m * PITCH;             // leg pitch: 21 / 42 / 84 mm
+  nx = round(ux / m);
+  ny = round(uy / m);
+  fw = footprint(m);
+  fd = footprint(m);
   union() {
-    // feet on the 42 mm grid
-    translate([-(nx - 1) * PITCH / 2, -(ny - 1) * PITCH / 2, 0])
+    // feet tiling the footprint on the leg-pitch grid
+    translate([-(nx - 1) * lp / 2, -(ny - 1) * lp / 2, 0])
       for (ix = [0 : nx - 1], iy = [0 : ny - 1])
-        translate([ix * PITCH, iy * PITCH, 0])
+        translate([ix * lp, iy * lp, 0])
           gridfinity_foot(fw, fd);
     // continuous spiral body
     translate([0, 0, BASE_H])

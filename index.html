@@ -238,7 +238,7 @@
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Bin & Container Customizer</span>
-    <span class="ver">v0.1-0708-130936</span>
+    <span class="ver">v0.1-0708-132400</span>
   </div>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
@@ -345,7 +345,7 @@
     </p>
 
     <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
-      OneWall · v0.1-0708-130936
+      OneWall · v0.1-0708-132400
     </p>
   </div>
 </dialog>
@@ -477,8 +477,10 @@ const P = {
 const MODE = { mode: 'onewall' };
 const GP = {
   part: 'bin',
-  // bin — footprint in grid units (0.5 / 1 / 2 / 4), height in 7 mm units
+  // bin — footprint 0.5–8 grid units in 0.5 steps, height in 7 mm units
   units_x: 1, units_y: 1, height_units: 3,
+  // leg size in grid units: 0.5 = 21 mm, 1 = 42 mm, 2 = 84 mm
+  leg_mult: 1,
   // spiral rib texture on the vase wall
   ribs: 0, rib_amp: 0.4, rib_twist: 0,
   // baseplate
@@ -964,11 +966,28 @@ fRes.close();
 
 // — Gridfinity creator folder (hidden until Mode = gridfinity) —
 const UNIT_OPTS = [0.5, 1, 2, 4];
+const LEG_OPTS = [0.5, 1, 2];
 const fGf = gui.addFolder('Gridfinity');
 fGf.add(GP, 'part', ['bin', 'baseplate']).name('Part').onChange(scheduleRebuild);
 const fGfBin = fGf.addFolder('Bin (vase / spiral mode)');
-fGfBin.add(GP, 'units_x', UNIT_OPTS).name('Width (units)').onChange(scheduleRebuild);
-fGfBin.add(GP, 'units_y', UNIT_OPTS).name('Depth (units)').onChange(scheduleRebuild);
+
+// Leg size must divide the bin size on both axes ("blocked" combos
+// snap to the largest valid option; 0.5 always fits 0.5-step sizes).
+const legOK = m => {
+  const fits = u => Math.abs(u / m - Math.round(u / m)) < 1e-9;
+  return fits(GP.units_x) && fits(GP.units_y);
+};
+const snapLegs = () => {
+  if (!legOK(GP.leg_mult)) {
+    GP.leg_mult = [2, 1, 0.5].find(legOK);
+    legCtrl.updateDisplay();
+  }
+  scheduleRebuild();
+};
+fGfBin.add(GP, 'units_x', 0.5, 8, 0.5).name('Width (units)').onChange(snapLegs);
+fGfBin.add(GP, 'units_y', 0.5, 8, 0.5).name('Depth (units)').onChange(snapLegs);
+const legCtrl = fGfBin.add(GP, 'leg_mult', LEG_OPTS)
+  .name('Leg size (×42 mm)').onChange(snapLegs);
 fGfBin.add(GP, 'height_units', 1, 12, 0.5).name('Height (7 mm units)').onChange(scheduleRebuild);
 fGfBin.add(GP, 'ribs', 0, 48, 1).name('Spiral ribs').onChange(scheduleRebuild);
 fGfBin.add(GP, 'rib_amp', 0, 1.5, 0.05).name('Rib depth').onChange(scheduleRebuild);

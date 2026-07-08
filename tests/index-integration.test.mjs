@@ -38,9 +38,13 @@ ok(/buildGridfinityGeometry/.test(js) &&
    'rebuild() branches on mode');
 
 // 3. GUI offers the required multipliers
-ok(/UNIT_OPTS = \[0\.5, 1, 2, 4\]/.test(js), 'unit options are 0.5 / 1 / 2 / 4');
-ok(/'units_x', UNIT_OPTS/.test(js) && /'units_y', UNIT_OPTS/.test(js) &&
-   /'cell_mult', UNIT_OPTS/.test(js), 'bin footprint + plate cell use multipliers');
+ok(/'units_x', 0\.5, 8, 0\.5/.test(js) && /'units_y', 0\.5, 8, 0\.5/.test(js),
+   'bin size sliders span 0.5–8 units in 0.5 steps');
+ok(/LEG_OPTS = \[0\.5, 1, 2\]/.test(js) && /'leg_mult', LEG_OPTS/.test(js),
+   'leg size options are 0.5 / 1 / 2');
+ok(/const legOK =/.test(js) && /const snapLegs =/.test(js),
+   'invalid bin/leg combos are blocked (snap to valid)');
+ok(/'cell_mult', UNIT_OPTS/.test(js), 'plate cell size uses multipliers');
 ok(/'height_units', 1, 12, 0\.5/.test(js), 'height in 0.5 steps of 7 mm units');
 ok(/'ribs', 0, 48, 1/.test(js), 'spiral rib control present');
 
