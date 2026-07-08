@@ -238,7 +238,7 @@
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Bin & Container Customizer</span>
-    <span class="ver">v0.1-0624-195139</span>
+    <span class="ver">v0.1-0708-123958</span>
   </div>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
@@ -345,7 +345,7 @@
     </p>
 
     <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
-      OneWall · v0.1-0624-195139
+      OneWall · v0.1-0708-123958
     </p>
   </div>
 </dialog>
@@ -439,6 +439,9 @@ import GUI                from 'lil-gui';
 // CSG library — used at STL export time to subtract the signature
 // from the bin (true engraving, single solid, vase-mode compatible).
 import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
+// Gridfinity Creator — shared math module (also unit-tested in Node)
+import { buildBin as gfBuildBin, buildBaseplate as gfBuildPlate }
+  from './assets/gridfinity.js';
 
 // ════════════════════════════════════════════════════════════
 //  PARAMETERS — mirror of onewall.scad
@@ -466,6 +469,21 @@ const P = {
   point_spacing: 2.2, mesh_layer: 1.4,
   // Signature engraving (bottom of bin) — depth = 1 layer (0.2 mm) by default
   sig_enabled: true, sig_text: '@Amitkuzi', sig_size: 6, sig_depth: 0.2,
+};
+
+// ── Gridfinity Creator state ────────────────────────────────
+// MODE switches the whole app between the OneWall customizer and
+// the Gridfinity creator; GP mirrors gridfinity.scad parameters.
+const MODE = { mode: 'onewall' };
+const GP = {
+  part: 'bin',
+  // bin — footprint in grid units (0.5 / 1 / 2 / 4), height in 7 mm units
+  units_x: 1, units_y: 1, height_units: 3,
+  // spiral rib texture on the vase wall
+  ribs: 0, rib_amp: 0.4, rib_twist: 0,
+  // baseplate
+  cells_x: 3, cells_y: 3, cell_mult: 1,
+  corner_r: 4,
 };
 
 // ════════════════════════════════════════════════════════════
@@ -828,12 +846,26 @@ function buildSigMesh() {
 // (thin bars) instead of readable text, which makes the scene look
 // cluttered. Instead we render only the bin in the preview and add a
 // fresh signature solid on the fly when the user exports STL.
+// Wrap the shared gridfinity math buffers into a THREE geometry.
+function buildGridfinityGeometry() {
+  const res = GP.part === 'bin'
+    ? gfBuildBin(GP)
+    : gfBuildPlate({ ...GP, mult: GP.cell_mult });
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(res.positions, 3));
+  geom.setIndex(new THREE.BufferAttribute(res.indices, 1));
+  geom.computeVertexNormals();
+  return { geom, verts: res.verts, tris: res.tris };
+}
+
 function rebuild() {
   const t0 = performance.now();
   if (binMesh) { printGroup.remove(binMesh); binMesh.geometry.dispose(); }
   if (sigMesh) { printGroup.remove(sigMesh); sigMesh.geometry.dispose(); sigMesh = null; }
 
-  const { geom, verts, tris } = buildGeometry();
+  const { geom, verts, tris } = MODE.mode === 'gridfinity'
+    ? buildGridfinityGeometry()
+    : buildGeometry();
   binMesh = new THREE.Mesh(geom, material);
   printGroup.add(binMesh);
 
@@ -868,6 +900,11 @@ const scheduleRebuild = () => {
   pendingRebuild = true;
   requestAnimationFrame(() => { pendingRebuild = false; rebuild(); });
 };
+
+// — Mode switch: OneWall customizer ↔ Gridfinity creator —
+gui.add(MODE, 'mode', ['onewall', 'gridfinity'])
+   .name('Mode')
+   .onChange(() => applyMode());
 
 // — Geometry folders —
 const fOuter = gui.addFolder('Outer Dimensions');
@@ -925,6 +962,34 @@ fRes.add(P, 'point_spacing', 0.8, 5,   0.1).onChange(scheduleRebuild);
 fRes.add(P, 'mesh_layer',    0.4, 4,   0.1).onChange(scheduleRebuild);
 fRes.close();
 
+// — Gridfinity creator folder (hidden until Mode = gridfinity) —
+const UNIT_OPTS = [0.5, 1, 2, 4];
+const fGf = gui.addFolder('Gridfinity');
+fGf.add(GP, 'part', ['bin', 'baseplate']).name('Part').onChange(scheduleRebuild);
+const fGfBin = fGf.addFolder('Bin (vase / spiral mode)');
+fGfBin.add(GP, 'units_x', UNIT_OPTS).name('Width (units)').onChange(scheduleRebuild);
+fGfBin.add(GP, 'units_y', UNIT_OPTS).name('Depth (units)').onChange(scheduleRebuild);
+fGfBin.add(GP, 'height_units', 1, 12, 0.5).name('Height (7 mm units)').onChange(scheduleRebuild);
+fGfBin.add(GP, 'ribs', 0, 48, 1).name('Spiral ribs').onChange(scheduleRebuild);
+fGfBin.add(GP, 'rib_amp', 0, 1.5, 0.05).name('Rib depth').onChange(scheduleRebuild);
+fGfBin.add(GP, 'rib_twist', -6, 6, 0.25).name('Rib twist').onChange(scheduleRebuild);
+const fGfPlate = fGf.addFolder('Baseplate (lite)');
+fGfPlate.add(GP, 'cells_x', 1, 8, 1).name('Cells X').onChange(scheduleRebuild);
+fGfPlate.add(GP, 'cells_y', 1, 8, 1).name('Cells Y').onChange(scheduleRebuild);
+fGfPlate.add(GP, 'cell_mult', UNIT_OPTS).name('Cell size (×42 mm)').onChange(scheduleRebuild);
+fGf.add(GP, 'corner_r', 1, 8, 0.5).name('Corner radius').onChange(scheduleRebuild);
+
+// Show only the folders relevant to the active mode.
+const ONEWALL_FOLDERS = [fOuter, fSec, fLow, fMid, fTex, fWave, fLip, fRes];
+function applyMode() {
+  const gf = MODE.mode === 'gridfinity';
+  ONEWALL_FOLDERS.forEach(f => gf ? f.hide() : f.show());
+  gf ? fGf.show() : fGf.hide();
+  window.owTrack && owTrack('mode_switch', { mode: MODE.mode });
+  scheduleRebuild();
+}
+fGf.hide();
+
 // Signature parameters (sig_enabled, sig_text, sig_size, sig_depth)
 // are intentionally NOT exposed in the GUI — they are locked product
 // branding. They still live in `P` so session JSON round-trips them
@@ -969,7 +1034,9 @@ function snapshotSession() {
     format: 'svase_session',
     version: 1,
     savedAt: new Date().toISOString(),
+    mode:     MODE.mode,
     params:   { ...P },
+    gridfinity: { ...GP },
     material: {
       color:               matSettings.color,
       roughness:           material.roughness,
@@ -1001,6 +1068,13 @@ function restoreSession(data) {
   if (data.params)
     for (const k of Object.keys(P))
       if (k in data.params) P[k] = data.params[k];
+  if (data.gridfinity)
+    for (const k of Object.keys(GP))
+      if (k in data.gridfinity) GP[k] = data.gridfinity[k];
+  if (data.mode === 'onewall' || data.mode === 'gridfinity') {
+    MODE.mode = data.mode;
+    applyMode();
+  }
 
   // Material
   const m = data.material || {};
@@ -1130,7 +1204,9 @@ async function exportSTL() {
     stats.textContent = '⚠ CSG library failed to load — exporting bin only';
     console.warn('OneWall: three-bvh-csg not available');
   } else {
-    sigGeom = makeSigCarveGeometry();
+    // Baseplates are open-bottom frames — nothing to engrave into.
+    sigGeom = (MODE.mode === 'gridfinity' && GP.part === 'baseplate')
+      ? null : makeSigCarveGeometry();
     if (!sigGeom) {
       stats.textContent = 'signature disabled — exporting bin only';
     } else {
@@ -1187,11 +1263,18 @@ async function exportSTL() {
   const blob = new Blob([stl], { type: 'application/octet-stream' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href = url; a.download = 'onewall_bin.stl'; a.click();
+  const stlName = MODE.mode === 'gridfinity'
+    ? (GP.part === 'bin'
+        ? `gridfinity_bin_${GP.units_x}x${GP.units_y}x${GP.height_units}.stl`
+        : `gridfinity_plate_${GP.cells_x}x${GP.cells_y}_m${GP.cell_mult}.stl`)
+    : 'onewall_bin.stl';
+  a.href = url; a.download = stlName; a.click();
   URL.revokeObjectURL(url);
 
   // Analytics — the main "tool was used" signal.
   window.owTrack && owTrack('stl_export', {
+    mode:         MODE.mode,
+    gf_part:      GP.part,
     wall_texture: P.wall_texture,
     lip_style:    P.lip_style,
     mid_profile:  P.mid_profile,

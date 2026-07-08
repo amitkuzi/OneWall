@@ -4,6 +4,6 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "node tests/gridfinity.test.mjs"
+    "test": "node tests/gridfinity.test.mjs && node tests/scad-consistency.test.mjs && node tests/index-integration.test.mjs"
   }
 }
