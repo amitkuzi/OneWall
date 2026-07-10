@@ -57,8 +57,17 @@ ok(/data\.gridfinity/.test(js) && /data\.mode === 'onewall'/.test(js),
 // 5. STL export awareness
 ok(/gridfinity_bin_\$\{GP\.units_x\}/.test(js), 'bin STL filename encodes size');
 ok(/gridfinity_plate_/.test(js), 'plate STL filename branch present');
-ok(/GP\.part === 'baseplate'\)\s*\?\s*null : makeSigCarveGeometry\(\)/.test(js),
-   'signature carve skipped for open-bottom baseplates');
+ok(/MODE\.mode === 'gridfinity'\)\s*\?\s*null : makeSigCarveGeometry\(\)/.test(js),
+   'signature carve skipped for all gridfinity parts');
+
+// 6. normal/lite style, lip, dividers
+ok(/'style',\s*\['normal',\s*'lite'\]/.test(js), 'style dropdown offers normal/lite');
+ok(/style:\s*'normal'/.test(js), 'style defaults to normal');
+ok(/add\(GP,\s*'lip'\)/.test(js), 'stacking lip toggle present');
+ok(/add\(GP,\s*'div_x',\s*0,\s*8,\s*1\)/.test(js) &&
+   /add\(GP,\s*'div_y',\s*0,\s*8,\s*1\)/.test(js), 'divider sliders present');
+ok(/add\(GP,\s*'wall_t'/.test(js), 'wall thickness control present');
+ok(/_lite/.test(js), 'STL filename marks lite style');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

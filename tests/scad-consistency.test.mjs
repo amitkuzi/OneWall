@@ -4,7 +4,7 @@
 // the spec constants match the JS module exactly.
 // Run: node tests/scad-consistency.test.mjs
 import { readFileSync } from 'fs';
-import { GF } from '../assets/gridfinity.js';
+import { GF, LIP_H, LIP_EDGE } from '../assets/gridfinity.js';
 
 const src = readFileSync(new URL('../gridfinity.scad', import.meta.url), 'utf8');
 let pass = 0, fail = 0;
@@ -32,6 +32,8 @@ ok(num('BASE_C1') === GF.BASE.C1, `BASE_C1 = ${GF.BASE.C1}`);
 ok(num('BASE_S') === GF.BASE.S, `BASE_S = ${GF.BASE.S}`);
 ok(num('BASE_C2') === GF.BASE.C2, `BASE_C2 = ${GF.BASE.C2}`);
 ok(num('clearance') === GF.CLEAR, `default clearance = ${GF.CLEAR}`);
+ok(num('LIP_H') === LIP_H, `LIP_H = ${LIP_H}`);
+ok(num('LIP_EDGE') === LIP_EDGE, `LIP_EDGE = ${LIP_EDGE}`);
 
 // 3. every module invoked is defined
 const defined = new Set([...code.matchAll(/module\s+(\w+)/g)].map(m => m[1]));
@@ -54,6 +56,18 @@ ok(/leg_mult\s*=\s*1;\s*\/\/\s*\[0\.5, 1, 2\]/.test(src), 'leg_mult offers 0.5/1
 ok(/cell_mult\s*=\s*1;\s*\/\/\s*\[0\.5, 1, 2, 4\]/.test(src), 'cell_mult offers 0.5/1/2/4');
 ok(/function\s+leg_fits/.test(src) && /function\s+eff_leg/.test(src),
    'leg divisibility guard functions defined');
+
+// 5. style / lip / divider options mirror the JS module
+ok(/style\s*=\s*"normal";\s*\/\/\s*\[normal, lite\]/.test(src),
+   'style offers normal/lite');
+ok(/lip\s*=\s*true;/.test(src), 'stacking lip enabled by default');
+ok(/div_x\s*=\s*0;\s*\/\/\s*\[0:1:8\]/.test(src), 'div_x range 0–8');
+ok(/div_y\s*=\s*0;\s*\/\/\s*\[0:1:8\]/.test(src), 'div_y range 0–8');
+ok(/function\s+socket_inset/.test(src) && /function\s+seat_inset/.test(src),
+   'socket/seat profile functions defined');
+ok(/module\s+bin_negative/.test(src) && /module\s+bin_dividers/.test(src),
+   'normal-style bin modules defined');
+ok(/module\s+socket_profile/.test(src), 'socket profile split for closed-floor plates');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
