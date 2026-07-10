@@ -4,8 +4,11 @@
 //  wraps the buffers into THREE.BufferGeometry) and in Node for the
 //  test suite (tests/gridfinity.test.mjs).
 //
-//  Focus: LITE, vase-mode (spiral) printable bins + thin-wall
-//  baseplates, footprints in multiples of 0.5 / 1 / 2 / 4 units.
+//  Bins print in normal slicer mode (real walls + floor, optional
+//  stacking lip and X/Y dividers); a LITE style keeps the solid
+//  body for spiral/vase printing. Baseplates come closed-floor
+//  (normal) or open-bottom (lite). Footprints in multiples of
+//  0.5 / 1 / 2 / 4 units.
 // ════════════════════════════════════════════════════════════
 
 export const GF = {
@@ -21,6 +24,20 @@ export const GF = {
 
 export const MULTIPLIERS = [0.5, 1, 2, 4];
 export const LEG_MULTS = [0.5, 1, 2];
+
+// Stacking lip: extra rim height on top of a bin whose inner
+// profile is the socket shape, so the foot of another bin seats
+// into it. 4.4 mm per the Gridfinity spec (0.35 less than the
+// 4.75 foot — stacked bins rest on the chamfers, not the floor).
+export const LIP_H = 4.4;
+// Thinnest printable edge at the very top of the lip, mm.
+export const LIP_EDGE = 0.6;
+
+// Lip seat inset at depth d below the bin top: the socket profile
+// shifted out by the clearance (the lip lives inside the bin's own
+// footprint), clamped so the top edge stays printable.
+export const lipSeatInset = d =>
+  Math.max(LIP_EDGE, socketInset(d) - GF.CLEAR);
 
 // Does leg size m tile bin size u exactly? (both in grid units)
 export const legFits = (u, m) =>
@@ -171,25 +188,51 @@ function mergeParts(parts) {
   return { positions, indices };
 }
 
-// ── Bin (spiral body on per-cell feet) ──────────────────────
+// Axis-aligned closed box solid (used for divider walls).
+function boxMesh(x0, x1, y0, y1, z0, z1) {
+  const positions = new Float32Array([
+    x0, y0, z0,  x1, y0, z0,  x1, y1, z0,  x0, y1, z0,
+    x0, y0, z1,  x1, y0, z1,  x1, y1, z1,  x0, y1, z1,
+  ]);
+  const indices = new Uint32Array([
+    0, 2, 1,  0, 3, 2,      // bottom (−z)
+    4, 5, 6,  4, 6, 7,      // top (+z)
+    0, 1, 5,  0, 5, 4,      // −y
+    1, 2, 6,  1, 6, 5,      // +x
+    2, 3, 7,  2, 7, 6,      // +y
+    3, 0, 4,  3, 4, 7,      // −x
+  ]);
+  return { positions, indices };
+}
+
+// ── Bin (hollow body on per-cell feet) ──────────────────────
 // The base is a grid of standard Gridfinity feet — one per 42 mm
 // cell (or a single sub-unit foot for 0.5 bins) — so any bin size
-// drops onto a normal baseplate. Above the feet sits one continuous
-// wall body for the slicer's spiral/vase mode.
+// drops onto a normal baseplate.
 //
-// Print: bottom shell layers ≥ 26 (≈ 5.2 mm at 0.2 mm) so the feet
-// and the deck above them are solid before the spiral wall starts.
+// style = 'normal' (default): real walls + floor, prints in normal
+//   slicer mode; supports the stacking lip and divider walls.
+// style = 'lite': solid body for the slicer's Spiral vase mode —
+//   print with bottom shell layers ≥ 26 (≈ 5.2 mm at 0.2 mm) so the
+//   feet and deck are solid before the spiral wall starts. Lip and
+//   dividers are ignored (a single spiral wall can't print them).
 export function buildBin(params = {}) {
   const {
     units_x = 1, units_y = 1, height_units = 3, leg_mult = 1,
     corner_r = 4, spacing = 2, layer_step = 1.5,
+    style = 'normal',
+    wall_t = 1.2, floor_t = 1.0,
+    lip = false,               // stackable top rim (normal style)
+    div_x = 0, div_y = 0,      // divider walls across X / Y (normal style)
     // optional spiral rib texture on the wall above the base
     ribs = 0, rib_amp = 0, rib_twist = 0,
   } = params;
 
   const w = footprint(units_x);
   const d = footprint(units_y);
-  const height = GF.BASE_H + height_units * GF.HU;
+  const lite = style === 'lite';
+  const lipH = (!lite && lip) ? LIP_H : 0;
+  const height = GF.BASE_H + height_units * GF.HU + lipH;
   const OVERLAP = 0.1;   // feet poke into the body so the union fuses
 
   const parts = [];
@@ -216,7 +259,7 @@ export function buildBin(params = {}) {
       parts.push(shellFromLayers(layers, footZs));
     }
 
-  // Body — one continuous outline from the top of the feet up
+  // Body — outer wall from the top of the feet up
   const ring = roundedRectRing(w, d, corner_r, spacing);
   const M = ring.length;
   const zs = [GF.BASE_H];
@@ -224,7 +267,7 @@ export function buildBin(params = {}) {
   for (let i = 1; i <= wallSteps; i++)
     zs.push(GF.BASE_H + (height - GF.BASE_H) * i / wallSteps);
 
-  const layers = zs.map(z => {
+  const ribbedRing = z => {
     if (!ribs || !rib_amp) return ring;
     const tz = (z - GF.BASE_H) / Math.max(height - GF.BASE_H, 0.001);
     return ring.map((p, k) => {
@@ -235,26 +278,80 @@ export function buildBin(params = {}) {
       const tl = Math.hypot(tx, ty) || 1;
       return [p[0] + (ty / tl) * off, p[1] + (-tx / tl) * off];
     });
-  });
-  parts.push(shellFromLayers(layers, zs));
+  };
+  const layers = zs.map(ribbedRing);
+
+  if (lite) {
+    // solid block — the spiral/vase slicer turns it into one wall
+    parts.push(shellFromLayers(layers, zs));
+  } else {
+    // Hollow tub as ONE closed shell: continue the layer sweep from
+    // the outer top across the rim and down the inner wall to the
+    // cavity floor. shellFromLayers caps the two ends: the deck
+    // bottom (z = BASE_H) and the cavity floor disc.
+    const floorZ = GF.BASE_H + floor_t;
+    const inner = (inset, z) => { layers.push(offsetRing(ring, inset)); zs.push(z); };
+
+    if (lipH) {
+      // seat profile top-down: vertical edge, 45° chamfer, straight,
+      // 45° chamfer — the mirror of the foot, at LIP_EDGE minimum
+      const dks = [0, LIP_EDGE + GF.CLEAR, GF.BASE.C2,
+                   GF.BASE.C2 + GF.BASE.S, LIP_H];
+      for (const dd of dks) inner(lipSeatInset(dd), height - dd);
+      // transition from the seat bottom to the cavity wall: a 45°
+      // taper in either direction stays printable
+      const span = Math.abs(lipSeatInset(LIP_H) - wall_t);
+      if (span > 0.01) inner(wall_t, height - LIP_H - span);
+    } else {
+      inner(wall_t, height);
+    }
+    inner(wall_t, floorZ);
+    parts.push(shellFromLayers(layers, zs));
+
+    // Divider walls — closed boxes overlapping the floor and side
+    // walls slightly so the slicer unions them into the bin. They
+    // stop at the nominal top, below the stacking lip.
+    const innerW = w - 2 * wall_t, innerD = d - 2 * wall_t;
+    const bite = Math.min(0.6, wall_t / 2);   // penetration into the walls
+    const divTop = height - lipH;
+    const divZ0 = floorZ - OVERLAP;
+    for (let i = 1; i <= div_x; i++) {
+      const x = -innerW / 2 + innerW * i / (div_x + 1);
+      parts.push(boxMesh(x - wall_t / 2, x + wall_t / 2,
+                         -(innerD / 2 + bite), innerD / 2 + bite,
+                         divZ0, divTop));
+    }
+    for (let i = 1; i <= div_y; i++) {
+      const y = -innerD / 2 + innerD * i / (div_y + 1);
+      parts.push(boxMesh(-(innerW / 2 + bite), innerW / 2 + bite,
+                         y - wall_t / 2, y + wall_t / 2,
+                         divZ0, divTop));
+    }
+  }
 
   const { positions, indices } = mergeParts(parts);
   return {
     positions, indices,
     width: w, depth: d, height, feet: nx * ny, leg_mult: m,
+    style, lip: lipH > 0, div_x: lite ? 0 : div_x, div_y: lite ? 0 : div_y,
     verts: positions.length / 3, tris: indices.length / 3,
   };
 }
 
-// ── Baseplate (lite: open-bottom socket frames) ─────────────
-// A grid of cells; each cell is a closed "donut" solid whose inner
-// wall is the socket (negative of the bin base + clearance) and
-// whose outer wall is the cell boundary. No floor → minimal
-// material. Cells overlap nothing; adjacent walls touch.
+// ── Baseplate ───────────────────────────────────────────────
+// A grid of cells whose inner wall is the socket (negative of the
+// bin base + clearance).
+//
+// style = 'normal' (default): closed floor under each socket — a
+//   rigid plate for normal slicing. The socket depth is clamped so
+//   at least 0.6 mm of floor remains (bins may sit a hair proud on
+//   thin plates, resting on the chamfers — same as the lip).
+// style = 'lite': open-bottom frames — minimal material.
 export function buildBaseplate(params = {}) {
   const {
     cells_x = 3, cells_y = 3, mult = 1,
     corner_r = 4, spacing = 2, plate_h = 5, clear = GF.CLEAR,
+    style = 'normal',
   } = params;
 
   const cell = mult * GF.PITCH;                       // cell pitch
@@ -318,18 +415,39 @@ export function buildBaseplate(params = {}) {
     return { positions, indices };
   }
 
+  // Solid cell with a closed floor: one layer sweep — outer wall up,
+  // rim annulus, socket profile down — capped by shellFromLayers with
+  // the plate bottom and the socket floor disc.
+  const socketDepth = Math.min(GF.BASE_H, plate_h - 0.6);
+  function cellMeshSolid(cx, cy) {
+    const dks = [...new Set(
+      [0, GF.BASE.C2, GF.BASE.C2 + GF.BASE.S, socketDepth]
+        .filter(dd => dd <= socketDepth + 1e-9)
+    )].sort((a, b) => a - b);
+    const layers = [outerRing, outerRing];
+    const zs = [0, plate_h];
+    for (const dd of dks) {
+      layers.push(offsetRing(innerBase, socketInset(dd)));
+      zs.push(plate_h - dd);
+    }
+    const moved = layers.map(r => r.map(p => [p[0] + cx, p[1] + cy]));
+    return shellFromLayers(moved, zs);
+  }
+
   // Tile cells, centred on the origin
   const parts = [];
   const x0 = -(cells_x - 1) * cell / 2;
   const y0 = -(cells_y - 1) * cell / 2;
   for (let ix = 0; ix < cells_x; ix++)
     for (let iy = 0; iy < cells_y; iy++)
-      parts.push(cellMesh(x0 + ix * cell, y0 + iy * cell));
+      parts.push(style === 'lite'
+        ? cellMesh(x0 + ix * cell, y0 + iy * cell)
+        : cellMeshSolid(x0 + ix * cell, y0 + iy * cell));
 
   const { positions, indices } = mergeParts(parts);
   return {
     positions, indices,
-    width: cells_x * cell, depth: cells_y * cell, height: plate_h,
+    width: cells_x * cell, depth: cells_y * cell, height: plate_h, style,
     verts: positions.length / 3, tris: indices.length / 3,
   };
 }

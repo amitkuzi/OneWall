@@ -1,7 +1,8 @@
 // Gridfinity Creator — geometry validation suite
 // Run: node tests/gridfinity.test.mjs
 import {
-  GF, MULTIPLIERS, LEG_MULTS, legFits, footprint, baseInset, socketInset,
+  GF, MULTIPLIERS, LEG_MULTS, LIP_H, LIP_EDGE, lipSeatInset,
+  legFits, footprint, baseInset, socketInset,
   roundedRectRing, offsetRing, buildBin, buildBaseplate,
   meshVolume, manifoldReport,
 } from '../assets/gridfinity.js';
@@ -62,10 +63,16 @@ for (const ux of MULTIPLIERS) {
   ok(near(bin.height, 4.75 + 21, 1e-6), `bin ${ux}x1 height = base + 3u = 25.75 mm`);
   const rep = manifoldReport(bin);
   ok(rep.ok, `bin ${ux}x1 mesh is watertight (${rep.edges} edges, ${rep.badEdges} bad)`);
-  const vol = meshVolume(bin);
   const boxVol = bin.width * bin.depth * bin.height;
-  ok(vol > 0.5 * boxVol && vol < boxVol,
-     `bin ${ux}x1 volume ${Math.round(vol)} mm³ is positive and < bounding box`);
+  const vol = meshVolume(bin);
+  ok(vol > 0 && vol < 0.55 * boxVol,
+     `normal bin ${ux}x1 is hollow (${Math.round(vol)} mm³)`);
+
+  const lite = buildBin({ units_x: ux, units_y: 1, height_units: 3, style: 'lite' });
+  ok(manifoldReport(lite).ok, `lite bin ${ux}x1 mesh is watertight`);
+  const lv = meshVolume(lite);
+  ok(lv > 0.5 * boxVol && lv < boxVol,
+     `lite bin ${ux}x1 is a solid body for vase mode (${Math.round(lv)} mm³)`);
 }
 
 // per-cell feet: a 2x2 bin must have 4 separate 42 mm-pitch feet
@@ -153,6 +160,70 @@ ok(manifoldReport(ribbed).ok, 'spiral-ribbed 2x2 bin is watertight');
 const half = buildBin({ units_x: 0.5, units_y: 0.5, height_units: 2 });
 ok(half.width < 21 && half.depth < 21, '0.5×0.5 bin fits inside a 21 mm half-cell');
 
+// ── 4d. Stacking lip ────────────────────────────────────────
+console.log('4d. stacking lip');
+{
+  const plain = buildBin({});
+  const lip = buildBin({ lip: true });
+  ok(near(lip.height, plain.height + LIP_H, 1e-6),
+     `lip adds ${LIP_H} mm on top (${lip.height} mm)`);
+  ok(manifoldReport(lip).ok, 'lipped bin is watertight');
+  ok(meshVolume(lip) > meshVolume(plain), 'lip adds material');
+
+  // seat profile: printable edge at the top, monotone (45° max), and
+  // wide enough that a foot's bottom passes into the seat bottom
+  ok(near(lipSeatInset(0), LIP_EDGE), `seat edge = ${LIP_EDGE} mm`);
+  let monoSeat = true, prevSeat = lipSeatInset(0);
+  for (let d = 0; d <= LIP_H; d += 0.05) {
+    const v = lipSeatInset(d);
+    if (v < prevSeat - 1e-9 || v > prevSeat + 0.06) monoSeat = false;
+    prevSeat = v;
+  }
+  ok(monoSeat, 'seat inset grows ≤45° with depth (printable, self-centering)');
+  const footBottomInset = baseInset(0);           // 2.95
+  ok(lipSeatInset(LIP_H) < footBottomInset,
+     'foot bottom fits inside the seat bottom opening');
+
+  // lip is ignored in lite (vase) style
+  const liteLip = buildBin({ style: 'lite', lip: true });
+  ok(near(liteLip.height, plain.height, 1e-6) && liteLip.lip === false,
+     'lite style ignores the lip');
+}
+
+// ── 4e. Dividers ────────────────────────────────────────────
+console.log('4e. dividers');
+{
+  const plain = buildBin({ units_x: 2, units_y: 2 });
+  const div = buildBin({ units_x: 2, units_y: 2, div_x: 3, div_y: 1 });
+  ok(manifoldReport(div).ok, 'divided bin mesh is watertight');
+  ok(meshVolume(div) > meshVolume(plain), 'dividers add material');
+  ok(div.div_x === 3 && div.div_y === 1, 'divider counts reported');
+
+  // dividers stay inside the footprint
+  const { positions } = div;
+  let maxX = 0, maxY = 0;
+  for (let i = 0; i < positions.length; i += 3) {
+    maxX = Math.max(maxX, Math.abs(positions[i]));
+    maxY = Math.max(maxY, Math.abs(positions[i + 1]));
+  }
+  ok(maxX <= div.width / 2 + 1e-6 && maxY <= div.depth / 2 + 1e-6,
+     'dividers stay inside the bin footprint');
+
+  // with a lip, dividers stop below the seat so stacked feet clear them
+  const lipDiv = buildBin({ lip: true, div_x: 1 });
+  let divTop = 0;
+  const body = buildBin({ lip: true });
+  const bodyVerts = body.positions.length;
+  for (let i = bodyVerts; i < lipDiv.positions.length; i += 3)
+    divTop = Math.max(divTop, lipDiv.positions[i + 2]);
+  ok(near(divTop, lipDiv.height - LIP_H, 1e-6),
+     `divider tops stop below the lip (z = ${divTop.toFixed(2)})`);
+
+  // lite style ignores dividers
+  const liteDiv = buildBin({ style: 'lite', div_x: 2 });
+  ok(liteDiv.div_x === 0, 'lite style ignores dividers');
+}
+
 // ── 5. Baseplates: manifold, fit, multipliers ───────────────
 console.log('5. baseplates');
 for (const m of [0.5, 1, 2]) {
@@ -173,6 +244,31 @@ for (const m of [0.5, 1, 2]) {
   const socketBottomW = openW - 2 * socketInset(GF.BASE_H);
   ok(binBottomW < socketBottomW,
      `bin(${m}) bottom ${binBottomW.toFixed(2)} < socket bottom ${socketBottomW.toFixed(2)}`);
+}
+
+// ── 5b. Baseplate styles ────────────────────────────────────
+console.log('5b. baseplate styles');
+{
+  const pn = buildBaseplate({ cells_x: 2, cells_y: 2 });
+  const pl = buildBaseplate({ cells_x: 2, cells_y: 2, style: 'lite' });
+  ok(pn.style === 'normal' && pl.style === 'lite', 'plate styles reported');
+  ok(manifoldReport(pn).ok && manifoldReport(pl).ok,
+     'both plate styles are watertight');
+  ok(meshVolume(pn) > meshVolume(pl),
+     `normal plate has a closed floor (${Math.round(meshVolume(pn))} > ${Math.round(meshVolume(pl))} mm³)`);
+
+  // normal plate keeps ≥ 0.6 mm of floor even when plate_h is thin:
+  // no vertex of the socket bottom may dip below the floor level
+  const thin = buildBaseplate({ cells_x: 1, cells_y: 1, plate_h: 4.75 });
+  ok(manifoldReport(thin).ok, 'thin normal plate is watertight');
+  let minInnerZ = Infinity;
+  const floorLevel = Math.max(4.75 - GF.BASE_H, 0.6);
+  for (let i = 0; i < thin.positions.length; i += 3) {
+    const z = thin.positions[i + 2];
+    if (z > 0.01 && z < minInnerZ) minInnerZ = z;
+  }
+  ok(minInnerZ >= floorLevel - 1e-6,
+     `socket floor clamped at ${floorLevel} mm (min inner z = ${minInnerZ.toFixed(2)})`);
 }
 
 // ── Summary ─────────────────────────────────────────────────

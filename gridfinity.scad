@@ -1,21 +1,23 @@
 // ════════════════════════════════════════════════════════════
-//  Gridfinity Creator — LITE bins & baseplates
-//  Vase-mode (spiral) printable bins + thin-wall open-bottom
-//  baseplates. Footprints in multiples of 0.5 / 1 / 2 / 4 units.
+//  Gridfinity Creator — bins & baseplates
+//  NORMAL style (default): bins with real walls + floor, optional
+//  stacking lip and X/Y dividers; baseplates with a closed floor.
+//  Prints in regular slicer mode — no special settings.
+//  LITE style: solid bin body for Spiral vase mode (bottom shell
+//  layers ≥ 26 ≈ 5.2 mm at 0.2 mm) + open-bottom baseplate frames.
+//  Footprints in multiples of 0.5 / 1 / 2 / 4 units.
 //
 //  Customizer-ready for MakerWorld / Printables / Thangs.
 //  Companion of the OneWall web preview (index.html → Gridfinity).
-//
-//  Bin: print with Spiral vase ON, bottom shell layers ≥ 26
-//  (≈ 5.2 mm at 0.2 mm layers — keeps the per-cell feet solid).
-//  Baseplate: normal mode, 2 perimeters, no infill needed.
 //
 //  License: CC BY 4.0 — @Amitkuzi
 // ════════════════════════════════════════════════════════════
 
 /* [What to generate] */
-// bin = vase-mode bin, baseplate = socket grid
+// bin = storage bin, baseplate = socket grid
 part = "bin"; // [bin, baseplate]
+// normal = walls + floor (regular slicing); lite = solid body for Spiral vase mode / open-bottom plate
+style = "normal"; // [normal, lite]
 
 /* [Bin size — Gridfinity units] */
 // width in grid units
@@ -27,6 +29,18 @@ height_units = 3; // [1:0.5:12]
 // leg size: 0.5 = 21 mm, 1 = 42 mm, 2 = 84 mm. Must divide the bin
 // size on both axes; otherwise 0.5 legs are used (always valid).
 leg_mult = 1; // [0.5, 1, 2]
+
+/* [Bin — normal style] */
+// stacking lip on top — the feet of another bin seat into it
+lip = true;
+// wall thickness
+wall_t = 1.2; // [0.8:0.1:3]
+// floor thickness above the 4.75 mm base
+floor_t = 1.0; // [0.6:0.2:3]
+// divider walls across the width (splits X into div_x+1 compartments)
+div_x = 0; // [0:1:8]
+// divider walls across the depth (splits Y into div_y+1 compartments)
+div_y = 0; // [0:1:8]
 
 /* [Baseplate] */
 // cells along X
@@ -53,9 +67,22 @@ BASE_S    = 1.8;   // straight section
 BASE_C2   = 2.15;  // top 45° chamfer
 BASE_H    = BASE_C1 + BASE_S + BASE_C2;   // 4.75
 BASE_INSET = BASE_C1 + BASE_C2;           // 2.95
+LIP_H     = 4.4;   // stacking lip height (0.35 less than the foot)
+LIP_EDGE  = 0.6;   // thinnest printable edge at the lip top
 $fn = 48;
 
 function footprint(u) = u * PITCH - FOOT_GAP;
+
+// Socket wall inset at depth d below the opening (mirror of the foot)
+function socket_inset(d) =
+  d <= 0 ? 0 :
+  d < BASE_C2 ? d :
+  d < BASE_C2 + BASE_S ? BASE_C2 :
+  d < BASE_H ? d - BASE_S : BASE_INSET;
+
+// Lip seat inset at depth d below the bin top: the socket profile
+// shifted out by the clearance, clamped to a printable edge
+function seat_inset(d) = max(LIP_EDGE, socket_inset(d) - clearance);
 
 // Does leg size m tile bin size u exactly?
 function leg_fits(u, m) = abs(u / m - round(u / m)) < 1e-6;
@@ -80,11 +107,12 @@ module slice(w, d, r, z, in) {
 // The base is one standard Gridfinity foot PER 42 mm CELL (a 2x2
 // bin gets 4 feet), so any size seats on a normal baseplate.
 // Sub-unit (0.5) bins get a single small foot for 21 mm plates.
-// Above the feet: one continuous wall for spiral/vase printing.
 //
-// PRINT: Spiral vase ON + bottom shell layers ≥ 26 (≈ 5.2 mm at
-// 0.2 mm layers) so the feet and deck are solid before the spiral
-// wall starts.
+// PRINT (style = normal): regular slicer settings — walls, floor,
+// optional stacking lip and dividers are real geometry.
+// PRINT (style = lite): Spiral vase ON + bottom shell layers ≥ 26
+// (≈ 5.2 mm at 0.2 mm layers) so the feet and deck are solid
+// before the spiral wall starts.
 module gridfinity_foot(fw, fd) {
   hull() { slice(fw, fd, corner_r, 0,                BASE_INSET);
            slice(fw, fd, corner_r, BASE_C1,          BASE_C2); }
@@ -92,6 +120,53 @@ module gridfinity_foot(fw, fd) {
            slice(fw, fd, corner_r, BASE_C1 + BASE_S, BASE_C2); }
   hull() { slice(fw, fd, corner_r, BASE_C1 + BASE_S, BASE_C2);
            slice(fw, fd, corner_r, BASE_H + 0.1,     0); }
+}
+
+// Cavity + lip-seat negative for a normal-style bin. Stacked hulls
+// between profile slices; every transition is a 45° chamfer or a
+// vertical wall, so the inside prints without supports.
+module bin_negative(w, d, top) {
+  fz  = BASE_H + floor_t;      // cavity floor
+  eps = 0.1;
+  if (lip) {
+    sb   = seat_inset(LIP_H);              // seat bottom inset
+    span = abs(sb - wall_t);               // 45° seat→wall transition
+    hull() { slice(w, d, corner_r, fz,                     wall_t);
+             slice(w, d, corner_r, top - LIP_H - span,     wall_t); }
+    hull() { slice(w, d, corner_r, top - LIP_H - span,     wall_t);
+             slice(w, d, corner_r, top - LIP_H,            sb); }
+    hull() { slice(w, d, corner_r, top - LIP_H,            sb);
+             slice(w, d, corner_r, top - BASE_C2 - BASE_S, seat_inset(BASE_C2 + BASE_S)); }
+    hull() { slice(w, d, corner_r, top - BASE_C2 - BASE_S, seat_inset(BASE_C2 + BASE_S));
+             slice(w, d, corner_r, top - BASE_C2,          seat_inset(BASE_C2)); }
+    hull() { slice(w, d, corner_r, top - BASE_C2,          seat_inset(BASE_C2));
+             slice(w, d, corner_r, top - LIP_EDGE - clearance, LIP_EDGE); }
+    hull() { slice(w, d, corner_r, top - LIP_EDGE - clearance, LIP_EDGE);
+             slice(w, d, corner_r, top + eps,              LIP_EDGE); }
+  } else {
+    hull() { slice(w, d, corner_r, fz,        wall_t);
+             slice(w, d, corner_r, top + eps, wall_t); }
+  }
+}
+
+// Divider walls: thin boxes overlapping the floor and side walls so
+// they fuse into the bin. They stop below the stacking lip.
+module bin_dividers(w, d, top) {
+  iw   = w - 2 * wall_t;
+  dep  = d - 2 * wall_t;
+  bite = min(0.6, wall_t / 2);   // penetration into the walls
+  fz   = BASE_H + floor_t;
+  dtop = top - (lip ? LIP_H : 0);
+  if (div_x >= 1)
+    for (i = [1 : div_x])
+      translate([-iw/2 + iw * i / (div_x + 1) - wall_t/2,
+                 -(dep/2 + bite), fz - 0.1])
+        cube([wall_t, dep + 2*bite, dtop - fz + 0.1]);
+  if (div_y >= 1)
+    for (i = [1 : div_y])
+      translate([-(iw/2 + bite),
+                 -dep/2 + dep * i / (div_y + 1) - wall_t/2, fz - 0.1])
+        cube([iw + 2*bite, wall_t, dtop - fz + 0.1]);
 }
 
 module gridfinity_bin(ux = units_x, uy = units_y, hu = height_units,
@@ -104,24 +179,38 @@ module gridfinity_bin(ux = units_x, uy = units_y, hu = height_units,
   ny = round(uy / m);
   fw = footprint(m);
   fd = footprint(m);
+  lip_h = (style == "normal" && lip) ? LIP_H : 0;
+  top   = BASE_H + hu * HU + lip_h;
   union() {
     // feet tiling the footprint on the leg-pitch grid
     translate([-(nx - 1) * lp / 2, -(ny - 1) * lp / 2, 0])
       for (ix = [0 : nx - 1], iy = [0 : ny - 1])
         translate([ix * lp, iy * lp, 0])
           gridfinity_foot(fw, fd);
-    // continuous spiral body
-    translate([0, 0, BASE_H])
-      linear_extrude(hu * HU)
-        rrect(w, d, corner_r);
+    if (style == "lite") {
+      // solid body — the spiral/vase slicer turns it into one wall
+      translate([0, 0, BASE_H])
+        linear_extrude(hu * HU)
+          rrect(w, d, corner_r);
+    } else {
+      difference() {
+        translate([0, 0, BASE_H])
+          linear_extrude(top - BASE_H)
+            rrect(w, d, corner_r);
+        bin_negative(w, d, top);
+      }
+      bin_dividers(w, d, top);
+    }
   }
 }
 
-// ── Baseplate — lite, open bottom (no floor) ────────────────
-// Each cell is a frame whose inner wall is the socket: the
-// negative of the bin base plus clearance. Bins drop in from the
-// top; the open bottom saves material and print time.
-module socket_negative(m = cell_mult) {
+// ── Baseplate ───────────────────────────────────────────────
+// Each cell's inner wall is the socket: the negative of the bin
+// base plus clearance. Style normal keeps a closed floor under the
+// socket (≥ 0.6 mm — on thin plates bins rest on the chamfers a
+// hair proud, like the stacking lip). Style lite cuts a shaft
+// through the floor → open-bottom frame, minimal material.
+module socket_profile(m = cell_mult) {
   ow = footprint(m) + 2 * clearance;   // top opening
   r  = corner_r + clearance;
   eps = 0.1;
@@ -133,21 +222,40 @@ module socket_negative(m = cell_mult) {
              slice(ow, ow, r, top - BASE_C2,          BASE_C2); }
     hull() { slice(ow, ow, r, top - BASE_H,           BASE_INSET);
              slice(ow, ow, r, top - BASE_C2 - BASE_S, BASE_C2); }
+  }
+}
+
+module socket_negative(m = cell_mult) {
+  ow = footprint(m) + 2 * clearance;
+  r  = corner_r + clearance;
+  eps = 0.1;
+  union() {
+    socket_profile(m);
     // straight shaft through the floor → open bottom
     translate([0, 0, -eps])
-      linear_extrude(top - BASE_H + 2*eps)
+      linear_extrude(plate_h - BASE_H + 2*eps)
         rrect(ow - 2*BASE_INSET, ow - 2*BASE_INSET, max(r - BASE_INSET, 0.3));
   }
 }
 
 module gridfinity_baseplate(cx = cells_x, cy = cells_y, m = cell_mult) {
   cell = m * PITCH;
+  floor_z = max(plate_h - BASE_H, 0.6);   // normal-style floor level
   translate([-(cx - 1) * cell / 2, -(cy - 1) * cell / 2, 0])
     for (ix = [0 : cx - 1], iy = [0 : cy - 1])
       translate([ix * cell, iy * cell, 0])
         difference() {
           linear_extrude(plate_h) rrect(cell, cell, 2);
-          socket_negative(m);
+          if (style == "lite") {
+            socket_negative(m);
+          } else {
+            // truncate the socket at the floor level
+            intersection() {
+              socket_profile(m);
+              translate([-cell/2, -cell/2, floor_z])
+                cube([cell, cell, plate_h]);
+            }
+          }
         }
 }
 

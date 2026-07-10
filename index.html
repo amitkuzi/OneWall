@@ -243,7 +243,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Bin & Container Customizer</span>
-    <span class="ver">v0.1-0708-132400</span>
+    <span class="ver">v0.1-0710-081610</span>
   </div>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
@@ -345,12 +345,13 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <h3>License &amp; credits</h3>
     <p>
       OneWall is released under <strong>CC BY 4.0</strong>. Built with
-      OpenSCAD, Three.js, lil-gui and three-bvh-csg. Every print
-      carries the <code>@Amitkuzi</code> bottom signature.
+      OpenSCAD, Three.js, lil-gui and three-bvh-csg. Every OneWall print
+      carries the <code>@Amitkuzi</code> bottom signature
+      (Gridfinity parts export clean, without it).
     </p>
 
     <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
-      OneWall · v0.1-0708-132400
+      OneWall · v0.1-0710-081610
     </p>
   </div>
 </dialog>
@@ -482,11 +483,16 @@ const P = {
 const MODE = { mode: 'onewall' };
 const GP = {
   part: 'bin',
+  // normal = walls + floor for regular slicing; lite = solid body
+  // for Spiral vase mode (open-bottom frame for baseplates)
+  style: 'normal',
   // bin — footprint 0.5–8 grid units in 0.5 steps, height in 7 mm units
   units_x: 1, units_y: 1, height_units: 3,
   // leg size in grid units: 0.5 = 21 mm, 1 = 42 mm, 2 = 84 mm
   leg_mult: 1,
-  // spiral rib texture on the vase wall
+  // normal-style bin: wall thickness, stacking lip, divider walls
+  wall_t: 1.2, lip: true, div_x: 0, div_y: 0,
+  // spiral rib texture on the wall
   ribs: 0, rib_amp: 0.4, rib_twist: 0,
   // baseplate
   cells_x: 3, cells_y: 3, cell_mult: 1,
@@ -885,10 +891,11 @@ rebuild();
 function updateSigBadge() {
   const badge = document.getElementById('sig-badge');
   const txt   = document.getElementById('sig-badge-text');
-  const on = P.sig_enabled && P.sig_text && svaseFont;
+  const gf = MODE.mode === 'gridfinity';
+  const on = !gf && P.sig_enabled && P.sig_text && svaseFont;
   badge.classList.toggle('off', !on);
-  txt.textContent = P.sig_enabled
-    ? (P.sig_text || '(empty)')
+  txt.textContent = gf ? '(none — gridfinity)'
+    : P.sig_enabled ? (P.sig_text || '(empty)')
     : '(disabled)';
 }
 
@@ -974,7 +981,9 @@ const UNIT_OPTS = [0.5, 1, 2, 4];
 const LEG_OPTS = [0.5, 1, 2];
 const fGf = gui.addFolder('Gridfinity');
 fGf.add(GP, 'part', ['bin', 'baseplate']).name('Part').onChange(scheduleRebuild);
-const fGfBin = fGf.addFolder('Bin (vase / spiral mode)');
+fGf.add(GP, 'style', ['normal', 'lite'])
+   .name('Style (normal / vase)').onChange(scheduleRebuild);
+const fGfBin = fGf.addFolder('Bin');
 
 // Leg size must divide the bin size on both axes ("blocked" combos
 // snap to the largest valid option; 0.5 always fits 0.5-step sizes).
@@ -994,10 +1003,14 @@ fGfBin.add(GP, 'units_y', 0.5, 8, 0.5).name('Depth (units)').onChange(snapLegs);
 const legCtrl = fGfBin.add(GP, 'leg_mult', LEG_OPTS)
   .name('Leg size (×42 mm)').onChange(snapLegs);
 fGfBin.add(GP, 'height_units', 1, 12, 0.5).name('Height (7 mm units)').onChange(scheduleRebuild);
+fGfBin.add(GP, 'lip').name('Stacking lip').onChange(scheduleRebuild);
+fGfBin.add(GP, 'div_x', 0, 8, 1).name('Dividers X').onChange(scheduleRebuild);
+fGfBin.add(GP, 'div_y', 0, 8, 1).name('Dividers Y').onChange(scheduleRebuild);
+fGfBin.add(GP, 'wall_t', 0.8, 3, 0.1).name('Wall (mm)').onChange(scheduleRebuild);
 fGfBin.add(GP, 'ribs', 0, 48, 1).name('Spiral ribs').onChange(scheduleRebuild);
 fGfBin.add(GP, 'rib_amp', 0, 1.5, 0.05).name('Rib depth').onChange(scheduleRebuild);
 fGfBin.add(GP, 'rib_twist', -6, 6, 0.25).name('Rib twist').onChange(scheduleRebuild);
-const fGfPlate = fGf.addFolder('Baseplate (lite)');
+const fGfPlate = fGf.addFolder('Baseplate');
 fGfPlate.add(GP, 'cells_x', 1, 8, 1).name('Cells X').onChange(scheduleRebuild);
 fGfPlate.add(GP, 'cells_y', 1, 8, 1).name('Cells Y').onChange(scheduleRebuild);
 fGfPlate.add(GP, 'cell_mult', UNIT_OPTS).name('Cell size (×42 mm)').onChange(scheduleRebuild);
@@ -1228,8 +1241,10 @@ async function exportSTL() {
     stats.textContent = '⚠ CSG library failed to load — exporting bin only';
     console.warn('OneWall: three-bvh-csg not available');
   } else {
-    // Baseplates are open-bottom frames — nothing to engrave into.
-    sigGeom = (MODE.mode === 'gridfinity' && GP.part === 'baseplate')
+    // Gridfinity parts export without the signature — the CSG carve
+    // can break the spiral-body mesh, and baseplates are open-bottom
+    // frames with nothing to engrave into.
+    sigGeom = (MODE.mode === 'gridfinity')
       ? null : makeSigCarveGeometry();
     if (!sigGeom) {
       stats.textContent = 'signature disabled — exporting bin only';
@@ -1287,10 +1302,16 @@ async function exportSTL() {
   const blob = new Blob([stl], { type: 'application/octet-stream' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
+  const gfSuffix = (GP.style === 'lite' ? '_lite' : '');
   const stlName = MODE.mode === 'gridfinity'
     ? (GP.part === 'bin'
-        ? `gridfinity_bin_${GP.units_x}x${GP.units_y}x${GP.height_units}.stl`
-        : `gridfinity_plate_${GP.cells_x}x${GP.cells_y}_m${GP.cell_mult}.stl`)
+        ? `gridfinity_bin_${GP.units_x}x${GP.units_y}x${GP.height_units}`
+          + gfSuffix
+          + (GP.style !== 'lite' && (GP.div_x || GP.div_y)
+              ? `_div${GP.div_x}x${GP.div_y}` : '')
+          + '.stl'
+        : `gridfinity_plate_${GP.cells_x}x${GP.cells_y}_m${GP.cell_mult}`
+          + gfSuffix + '.stl')
     : 'onewall_bin.stl';
   a.href = url; a.download = stlName; a.click();
   URL.revokeObjectURL(url);
