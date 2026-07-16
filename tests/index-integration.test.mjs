@@ -45,6 +45,8 @@ ok(/LEG_OPTS = \[0\.5, 1, 2\]/.test(js) && /'leg_mult', LEG_OPTS/.test(js),
 ok(/const legOK =/.test(js) && /const snapLegs =/.test(js),
    'invalid bin/leg combos are blocked (snap to valid)');
 ok(/'cell_mult', UNIT_OPTS/.test(js), 'plate cell size uses multipliers');
+ok(/'cells_x', 0\.5, 8, 0\.05/.test(js) && /'cells_y', 0\.5, 8, 0\.05/.test(js),
+   'plate cell counts accept fractions (half cells and finer)');
 ok(/'height_units', 1, 12, 0\.5/.test(js), 'height in 0.5 steps of 7 mm units');
 ok(/'ribs', 0, 48, 1/.test(js), 'spiral rib control present');
 

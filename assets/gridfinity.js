@@ -52,6 +52,37 @@ export const effectiveLegMult = (ux, uy, m) =>
 // Outer XY size of a bin spanning `units` grid cells.
 export const footprint = units => units * GF.PITCH - GF.FOOT_GAP;
 
+// Smallest bin step, grid units — nothing narrower has a bin to
+// drop into it, so a leftover thinner than this becomes filler.
+export const MIN_SOCKET = 0.5;
+
+// Split a (possibly fractional) baseplate cell count into the cells
+// that actually get built along one axis, sized in GRID UNITS:
+//
+//   full cells of `mult`, then the largest 0.5-step socket the
+//   remainder can hold, then a solid filler strip for any sliver
+//   left over (too narrow for even a half-unit bin).
+//
+// So 3.5 cells → [1, 1, 1, 0.5-socket]; 3.3 → [1, 1, 1, 0.3-filler];
+// 3.7 → [1, 1, 1, 0.5-socket, 0.2-filler]. The plate always spans
+// exactly count × mult × 42 mm, so it fills the space it was sized
+// for, and every socket in it fits a real bin.
+export function cellSizes(count, mult = 1) {
+  const EPS = 1e-9;
+  const out = [];
+  const full = Math.floor(count + EPS);
+  for (let i = 0; i < full; i++) out.push({ u: mult, socket: true });
+
+  let left = (count - full) * mult;               // remainder, grid units
+  const snapped = Math.floor(left / MIN_SOCKET + EPS) * MIN_SOCKET;
+  if (snapped >= MIN_SOCKET) {
+    out.push({ u: snapped, socket: true });
+    left -= snapped;
+  }
+  if (left > 1e-6) out.push({ u: left, socket: false });
+  return out;
+}
+
 // Horizontal inset of the bin wall at height z (0 = bottom).
 // 0 → 0.8      chamfer:  2.95 → 2.15
 // 0.8 → 2.6    straight: 2.15
@@ -342,6 +373,11 @@ export function buildBin(params = {}) {
 // A grid of cells whose inner wall is the socket (negative of the
 // bin base + clearance).
 //
+// cells_x / cells_y may be fractional — see cellSizes(): the plate
+// spans exactly count × mult × 42 mm, a leftover that can hold a
+// bin becomes a smaller socket, and anything narrower becomes a
+// solid filler strip.
+//
 // style = 'normal' (default): closed floor under each socket — a
 //   rigid plate for normal slicing. The socket depth is clamped so
 //   at least 0.6 mm of floor remains (bins may sit a hair proud on
@@ -354,10 +390,17 @@ export function buildBaseplate(params = {}) {
     style = 'normal',
   } = params;
 
-  const cell = mult * GF.PITCH;                       // cell pitch
-  const openW = footprint(mult) + 2 * clear;          // top opening
-  const openD = openW;
-  const t = (cell - openW) / 2;                       // top wall thickness
+  const xs = cellSizes(cells_x, mult);
+  const ys = cellSizes(cells_y, mult);
+  const span = list => list.reduce((s, c) => s + c.u, 0) * GF.PITCH;
+  const width = span(xs);
+  const depth = span(ys);
+
+  // Wall between a socket opening (footprint(u) + 2·clear) and its
+  // cell boundary (u · PITCH). The u terms cancel, so this is the
+  // same for every cell size — one uniform offset turns any socket
+  // ring into its own cell outline, whatever that cell's size.
+  const t = (GF.FOOT_GAP - 2 * clear) / 2;
 
   // z levels top-down through the socket profile, then to the bottom
   const zsSet = [0, plate_h - GF.BASE_H, plate_h - GF.BASE.C2 - GF.BASE.S,
@@ -365,12 +408,26 @@ export function buildBaseplate(params = {}) {
     .filter(z => z >= 0);
   const zs = [...new Set(zsSet)].sort((a, b) => a - b);
 
-  const innerBase = roundedRectRing(openW, openD, corner_r + clear, spacing);
-  const M = innerBase.length;
-  const outerRing = offsetRing(innerBase, -t);        // cell boundary
+  // Socket ring + matching cell outline for a cell of uw × ud grid
+  // units. Cached: a plate has at most a handful of distinct sizes.
+  const ringCache = new Map();
+  const ringsFor = (uw, ud) => {
+    const key = uw + '×' + ud;
+    let r = ringCache.get(key);
+    if (!r) {
+      const inner = roundedRectRing(footprint(uw) + 2 * clear,
+                                    footprint(ud) + 2 * clear,
+                                    corner_r + clear, spacing);
+      r = { inner, outer: offsetRing(inner, -t) };
+      ringCache.set(key, r);
+    }
+    return r;
+  };
 
   // One cell solid: outer wall + inner (socket) wall + top/bottom annuli
-  function cellMesh(cx, cy) {
+  function cellMesh(cx, cy, uw, ud) {
+    const { inner: innerBase, outer: outerRing } = ringsFor(uw, ud);
+    const M = innerBase.length;
     const Lz = zs.length;
     // vertex layout: [inner layer 0..Lz-1][outer layer 0..Lz-1]
     const positions = new Float32Array(2 * Lz * M * 3);
@@ -419,35 +476,54 @@ export function buildBaseplate(params = {}) {
   // rim annulus, socket profile down — capped by shellFromLayers with
   // the plate bottom and the socket floor disc.
   const socketDepth = Math.min(GF.BASE_H, plate_h - 0.6);
-  function cellMeshSolid(cx, cy) {
+  function cellMeshSolid(cx, cy, uw, ud) {
+    const { inner: innerBase, outer: outerRing } = ringsFor(uw, ud);
     const dks = [...new Set(
       [0, GF.BASE.C2, GF.BASE.C2 + GF.BASE.S, socketDepth]
         .filter(dd => dd <= socketDepth + 1e-9)
     )].sort((a, b) => a - b);
     const layers = [outerRing, outerRing];
-    const zs = [0, plate_h];
+    const zl = [0, plate_h];
     for (const dd of dks) {
       layers.push(offsetRing(innerBase, socketInset(dd)));
-      zs.push(plate_h - dd);
+      zl.push(plate_h - dd);
     }
     const moved = layers.map(r => r.map(p => [p[0] + cx, p[1] + cy]));
-    return shellFromLayers(moved, zs);
+    return shellFromLayers(moved, zl);
   }
 
-  // Tile cells, centred on the origin
+  // Leftover too narrow for a bin — a plain solid strip. Square
+  // corners on purpose: this is the edge that butts against a
+  // drawer wall.
+  function fillerMesh(cx, cy, uw, ud) {
+    const w = uw * GF.PITCH, d = ud * GF.PITCH;
+    return boxMesh(cx - w / 2, cx + w / 2, cy - d / 2, cy + d / 2, 0, plate_h);
+  }
+
+  // Tile cells left-to-right / front-to-back, plate centred on origin
   const parts = [];
-  const x0 = -(cells_x - 1) * cell / 2;
-  const y0 = -(cells_y - 1) * cell / 2;
-  for (let ix = 0; ix < cells_x; ix++)
-    for (let iy = 0; iy < cells_y; iy++)
-      parts.push(style === 'lite'
-        ? cellMesh(x0 + ix * cell, y0 + iy * cell)
-        : cellMeshSolid(x0 + ix * cell, y0 + iy * cell));
+  let xoff = -width / 2;
+  for (const cellX of xs) {
+    const cx = xoff + cellX.u * GF.PITCH / 2;
+    let yoff = -depth / 2;
+    for (const cellY of ys) {
+      const cy = yoff + cellY.u * GF.PITCH / 2;
+      const socket = cellX.socket && cellY.socket;
+      parts.push(
+        !socket            ? fillerMesh(cx, cy, cellX.u, cellY.u) :
+        style === 'lite'   ? cellMesh(cx, cy, cellX.u, cellY.u)
+                           : cellMeshSolid(cx, cy, cellX.u, cellY.u));
+      yoff += cellY.u * GF.PITCH;
+    }
+    xoff += cellX.u * GF.PITCH;
+  }
 
   const { positions, indices } = mergeParts(parts);
   return {
     positions, indices,
-    width: cells_x * cell, depth: cells_y * cell, height: plate_h, style,
+    width, depth, height: plate_h, style,
+    cells_x: xs.length, cells_y: ys.length,
+    sockets: xs.filter(c => c.socket).length * ys.filter(c => c.socket).length,
     verts: positions.length / 3, tris: indices.length / 3,
   };
 }

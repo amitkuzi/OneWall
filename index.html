@@ -243,7 +243,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Bin & Container Customizer</span>
-    <span class="ver">v0.1-0710-081610</span>
+    <span class="ver">v0.1-0716-210326</span>
   </div>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
@@ -351,7 +351,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     </p>
 
     <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
-      OneWall · v0.1-0710-081610
+      OneWall · v0.1-0716-210326
     </p>
   </div>
 </dialog>
@@ -868,7 +868,10 @@ function buildGridfinityGeometry() {
   geom.setAttribute('position', new THREE.BufferAttribute(res.positions, 3));
   geom.setIndex(new THREE.BufferAttribute(res.indices, 1));
   geom.computeVertexNormals();
-  return { geom, verts: res.verts, tris: res.tris };
+  // Outer size matters when fitting a plate to a drawer — surface it.
+  const size = `${res.width.toFixed(1)}×${res.depth.toFixed(1)}×`
+             + `${res.height.toFixed(1)} mm`;
+  return { geom, verts: res.verts, tris: res.tris, size };
 }
 
 function rebuild() {
@@ -876,14 +879,15 @@ function rebuild() {
   if (binMesh) { printGroup.remove(binMesh); binMesh.geometry.dispose(); }
   if (sigMesh) { printGroup.remove(sigMesh); sigMesh.geometry.dispose(); sigMesh = null; }
 
-  const { geom, verts, tris } = MODE.mode === 'gridfinity'
+  const { geom, verts, tris, size } = MODE.mode === 'gridfinity'
     ? buildGridfinityGeometry()
     : buildGeometry();
   binMesh = new THREE.Mesh(geom, material);
   printGroup.add(binMesh);
 
   const dt = (performance.now() - t0).toFixed(1);
-  stats.textContent = `verts=${verts}  tris=${tris}  rebuild=${dt}ms`;
+  stats.textContent = `verts=${verts}  tris=${tris}  rebuild=${dt}ms`
+                    + (size ? `  ${size}` : '');
   updateSigBadge();
 }
 rebuild();
@@ -1011,8 +1015,11 @@ fGfBin.add(GP, 'ribs', 0, 48, 1).name('Spiral ribs').onChange(scheduleRebuild);
 fGfBin.add(GP, 'rib_amp', 0, 1.5, 0.05).name('Rib depth').onChange(scheduleRebuild);
 fGfBin.add(GP, 'rib_twist', -6, 6, 0.25).name('Rib twist').onChange(scheduleRebuild);
 const fGfPlate = fGf.addFolder('Baseplate');
-fGfPlate.add(GP, 'cells_x', 1, 8, 1).name('Cells X').onChange(scheduleRebuild);
-fGfPlate.add(GP, 'cells_y', 1, 8, 1).name('Cells Y').onChange(scheduleRebuild);
+// Fractional counts are allowed: a leftover that can hold a bin
+// becomes a smaller socket, a thinner sliver becomes a solid filler
+// strip — so a plate can be sized to a drawer, not just to the grid.
+fGfPlate.add(GP, 'cells_x', 0.5, 8, 0.05).name('Cells X').onChange(scheduleRebuild);
+fGfPlate.add(GP, 'cells_y', 0.5, 8, 0.05).name('Cells Y').onChange(scheduleRebuild);
 fGfPlate.add(GP, 'cell_mult', UNIT_OPTS).name('Cell size (×42 mm)').onChange(scheduleRebuild);
 fGf.add(GP, 'corner_r', 1, 8, 0.5).name('Corner radius').onChange(scheduleRebuild);
 
@@ -1303,6 +1310,9 @@ async function exportSTL() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   const gfSuffix = (GP.style === 'lite' ? '_lite' : '');
+  // Fractional cell counts carry float noise from the slider — trim
+  // them so the filename reads 3.5, not 3.5000000000000004.
+  const num = v => String(+(+v).toFixed(2));
   const stlName = MODE.mode === 'gridfinity'
     ? (GP.part === 'bin'
         ? `gridfinity_bin_${GP.units_x}x${GP.units_y}x${GP.height_units}`
@@ -1310,8 +1320,8 @@ async function exportSTL() {
           + (GP.style !== 'lite' && (GP.div_x || GP.div_y)
               ? `_div${GP.div_x}x${GP.div_y}` : '')
           + '.stl'
-        : `gridfinity_plate_${GP.cells_x}x${GP.cells_y}_m${GP.cell_mult}`
-          + gfSuffix + '.stl')
+        : `gridfinity_plate_${num(GP.cells_x)}x${num(GP.cells_y)}`
+          + `_m${GP.cell_mult}` + gfSuffix + '.stl')
     : 'onewall_bin.stl';
   a.href = url; a.download = stlName; a.click();
   URL.revokeObjectURL(url);

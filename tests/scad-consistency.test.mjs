@@ -4,7 +4,7 @@
 // the spec constants match the JS module exactly.
 // Run: node tests/scad-consistency.test.mjs
 import { readFileSync } from 'fs';
-import { GF, LIP_H, LIP_EDGE } from '../assets/gridfinity.js';
+import { GF, LIP_H, LIP_EDGE, MIN_SOCKET } from '../assets/gridfinity.js';
 
 const src = readFileSync(new URL('../gridfinity.scad', import.meta.url), 'utf8');
 let pass = 0, fail = 0;
@@ -34,12 +34,13 @@ ok(num('BASE_C2') === GF.BASE.C2, `BASE_C2 = ${GF.BASE.C2}`);
 ok(num('clearance') === GF.CLEAR, `default clearance = ${GF.CLEAR}`);
 ok(num('LIP_H') === LIP_H, `LIP_H = ${LIP_H}`);
 ok(num('LIP_EDGE') === LIP_EDGE, `LIP_EDGE = ${LIP_EDGE}`);
+ok(num('MIN_SOCKET') === MIN_SOCKET, `MIN_SOCKET = ${MIN_SOCKET}`);
 
 // 3. every module invoked is defined
 const defined = new Set([...code.matchAll(/module\s+(\w+)/g)].map(m => m[1]));
 const builtins = new Set(['union', 'difference', 'hull', 'translate', 'offset',
   'square', 'linear_extrude', 'for', 'if', 'intersection', 'rotate', 'circle',
-  'cube', 'cylinder', 'mirror', 'scale', 'color', 'echo']);
+  'cube', 'cylinder', 'mirror', 'scale', 'color', 'echo', 'let']);
 const called = new Set(
   [...code.matchAll(/(?:^|[\s{};)])(\w+)\s*\(/gm)].map(m => m[1])
     .filter(n => !builtins.has(n))
@@ -68,6 +69,20 @@ ok(/function\s+socket_inset/.test(src) && /function\s+seat_inset/.test(src),
 ok(/module\s+bin_negative/.test(src) && /module\s+bin_dividers/.test(src),
    'normal-style bin modules defined');
 ok(/module\s+socket_profile/.test(src), 'socket profile split for closed-floor plates');
+
+// 6. fractional baseplate cells
+ok(/cells_x\s*=\s*3;\s*\/\/\s*\[0\.5:0\.05:8\]/.test(src),
+   'cells_x accepts fractional counts 0.5–8');
+ok(/cells_y\s*=\s*3;\s*\/\/\s*\[0\.5:0\.05:8\]/.test(src),
+   'cells_y accepts fractional counts 0.5–8');
+ok(/function\s+cell_sizes/.test(src) && /function\s+snap_socket/.test(src),
+   'cell decomposition functions defined');
+ok(/function\s+span_u/.test(src) && /function\s+cell_pos/.test(src),
+   'cell layout functions defined');
+ok(/module\s+baseplate_cell/.test(src), 'per-cell baseplate module defined');
+// sockets must be sized per axis now, not by a single multiplier
+ok(/module\s+socket_profile\(uw[^)]*ud/.test(src),
+   'socket_profile takes independent X/Y sizes');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

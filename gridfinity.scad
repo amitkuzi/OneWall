@@ -43,10 +43,10 @@ div_x = 0; // [0:1:8]
 div_y = 0; // [0:1:8]
 
 /* [Baseplate] */
-// cells along X
-cells_x = 3; // [1:1:8]
-// cells along Y
-cells_y = 3; // [1:1:8]
+// cells along X — fractional is fine (3.5 = three cells + a half)
+cells_x = 3; // [0.5:0.05:8]
+// cells along Y — fractional is fine (3.5 = three cells + a half)
+cells_y = 3; // [0.5:0.05:8]
 // cell size multiplier (0.5 = 21 mm half-pitch grid)
 cell_mult = 1; // [0.5, 1, 2, 4]
 // total plate height (socket profile is the top 4.75 mm)
@@ -69,9 +69,36 @@ BASE_H    = BASE_C1 + BASE_S + BASE_C2;   // 4.75
 BASE_INSET = BASE_C1 + BASE_C2;           // 2.95
 LIP_H     = 4.4;   // stacking lip height (0.35 less than the foot)
 LIP_EDGE  = 0.6;   // thinnest printable edge at the lip top
+MIN_SOCKET = 0.5;  // smallest bin step — thinner leftovers are filler
 $fn = 48;
 
 function footprint(u) = u * PITCH - FOOT_GAP;
+
+// ── Fractional baseplate cells ──────────────────────────────
+// Split a (possibly fractional) cell count into the cells actually
+// built along one axis. Each entry is [size_in_grid_units, is_socket]:
+// full cells of `m`, then the largest 0.5-step socket the remainder
+// can hold, then a solid filler strip for any sliver too narrow for
+// even a half-unit bin. The plate always spans count * m * 42 mm.
+function snap_socket(u) = floor(u / MIN_SOCKET + 1e-9) * MIN_SOCKET;
+
+function cell_sizes(count, m) =
+  let (full = floor(count + 1e-9),
+       rem  = (count - full) * m,
+       snap = snap_socket(rem),
+       left = rem - (snap >= MIN_SOCKET ? snap : 0))
+  concat(
+    full > 0 ? [for (i = [1 : full]) [m, true]] : [],
+    snap >= MIN_SOCKET ? [[snap, true]] : [],
+    left > 1e-6 ? [[left, false]] : []
+  );
+
+// Span of the first n entries, in grid units
+function span_u(lst, n) = n <= 0 ? 0 : lst[n - 1][0] + span_u(lst, n - 1);
+function total_u(lst) = span_u(lst, len(lst));
+// Centre of cell i in mm, for a run centred on the origin
+function cell_pos(lst, i) =
+  -total_u(lst) * PITCH / 2 + span_u(lst, i) * PITCH + lst[i][0] * PITCH / 2;
 
 // Socket wall inset at depth d below the opening (mirror of the foot)
 function socket_inset(d) =
@@ -210,53 +237,71 @@ module gridfinity_bin(ux = units_x, uy = units_y, hu = height_units,
 // socket (≥ 0.6 mm — on thin plates bins rest on the chamfers a
 // hair proud, like the stacking lip). Style lite cuts a shaft
 // through the floor → open-bottom frame, minimal material.
-module socket_profile(m = cell_mult) {
-  ow = footprint(m) + 2 * clearance;   // top opening
+//
+// Cells are sized per-axis by cell_sizes(), so cells_x / cells_y
+// may be fractional: a leftover that can hold a bin becomes a
+// smaller socket, a thinner sliver becomes a solid filler strip.
+module socket_profile(uw = cell_mult, ud = cell_mult) {
+  ow = footprint(uw) + 2 * clearance;   // top opening
+  od = footprint(ud) + 2 * clearance;
   r  = corner_r + clearance;
   eps = 0.1;
   top = plate_h;
   union() {
-    hull() { slice(ow, ow, r, top - BASE_C2,          BASE_C2);
-             slice(ow, ow, r, top + eps,              -eps); }
-    hull() { slice(ow, ow, r, top - BASE_C2 - BASE_S, BASE_C2);
-             slice(ow, ow, r, top - BASE_C2,          BASE_C2); }
-    hull() { slice(ow, ow, r, top - BASE_H,           BASE_INSET);
-             slice(ow, ow, r, top - BASE_C2 - BASE_S, BASE_C2); }
+    hull() { slice(ow, od, r, top - BASE_C2,          BASE_C2);
+             slice(ow, od, r, top + eps,              -eps); }
+    hull() { slice(ow, od, r, top - BASE_C2 - BASE_S, BASE_C2);
+             slice(ow, od, r, top - BASE_C2,          BASE_C2); }
+    hull() { slice(ow, od, r, top - BASE_H,           BASE_INSET);
+             slice(ow, od, r, top - BASE_C2 - BASE_S, BASE_C2); }
   }
 }
 
-module socket_negative(m = cell_mult) {
-  ow = footprint(m) + 2 * clearance;
+module socket_negative(uw = cell_mult, ud = cell_mult) {
+  ow = footprint(uw) + 2 * clearance;
+  od = footprint(ud) + 2 * clearance;
   r  = corner_r + clearance;
   eps = 0.1;
   union() {
-    socket_profile(m);
+    socket_profile(uw, ud);
     // straight shaft through the floor → open bottom
     translate([0, 0, -eps])
       linear_extrude(plate_h - BASE_H + 2*eps)
-        rrect(ow - 2*BASE_INSET, ow - 2*BASE_INSET, max(r - BASE_INSET, 0.3));
+        rrect(ow - 2*BASE_INSET, od - 2*BASE_INSET, max(r - BASE_INSET, 0.3));
+  }
+}
+
+// One cell: socket frame, or a plain solid strip when the cell is
+// too narrow on either axis to hold a bin.
+module baseplate_cell(uw, ud, is_socket) {
+  cw = uw * PITCH;
+  cd = ud * PITCH;
+  floor_z = max(plate_h - BASE_H, 0.6);   // normal-style floor level
+  if (!is_socket) {
+    // filler — square corners: this edge butts against a drawer wall
+    linear_extrude(plate_h) square([cw, cd], center = true);
+  } else {
+    difference() {
+      linear_extrude(plate_h) rrect(cw, cd, 2);
+      if (style == "lite") {
+        socket_negative(uw, ud);
+      } else {
+        // truncate the socket at the floor level
+        intersection() {
+          socket_profile(uw, ud);
+          translate([-cw/2, -cd/2, floor_z]) cube([cw, cd, plate_h]);
+        }
+      }
+    }
   }
 }
 
 module gridfinity_baseplate(cx = cells_x, cy = cells_y, m = cell_mult) {
-  cell = m * PITCH;
-  floor_z = max(plate_h - BASE_H, 0.6);   // normal-style floor level
-  translate([-(cx - 1) * cell / 2, -(cy - 1) * cell / 2, 0])
-    for (ix = [0 : cx - 1], iy = [0 : cy - 1])
-      translate([ix * cell, iy * cell, 0])
-        difference() {
-          linear_extrude(plate_h) rrect(cell, cell, 2);
-          if (style == "lite") {
-            socket_negative(m);
-          } else {
-            // truncate the socket at the floor level
-            intersection() {
-              socket_profile(m);
-              translate([-cell/2, -cell/2, floor_z])
-                cube([cell, cell, plate_h]);
-            }
-          }
-        }
+  xs = cell_sizes(cx, m);
+  ys = cell_sizes(cy, m);
+  for (i = [0 : len(xs) - 1], j = [0 : len(ys) - 1])
+    translate([cell_pos(xs, i), cell_pos(ys, j), 0])
+      baseplate_cell(xs[i][0], ys[j][0], xs[i][1] && ys[j][1]);
 }
 
 // ── Entry point ─────────────────────────────────────────────
