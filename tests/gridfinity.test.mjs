@@ -1,7 +1,8 @@
 // Gridfinity Creator — geometry validation suite
 // Run: node tests/gridfinity.test.mjs
 import {
-  GF, MULTIPLIERS, LEG_MULTS, LIP_H, LIP_EDGE, lipSeatInset,
+  GF, MULTIPLIERS, LEG_MULTS, LIP_H, LIP_EDGE, MIN_SOCKET,
+  lipSeatInset, cellSizes,
   legFits, footprint, baseInset, socketInset,
   roundedRectRing, offsetRing, buildBin, buildBaseplate,
   meshVolume, manifoldReport,
@@ -269,6 +270,74 @@ console.log('5b. baseplate styles');
   }
   ok(minInnerZ >= floorLevel - 1e-6,
      `socket floor clamped at ${floorLevel} mm (min inner z = ${minInnerZ.toFixed(2)})`);
+}
+
+// ── 5c. Fractional cell counts ──────────────────────────────
+console.log('5c. fractional cells');
+{
+  const shape = list => list.map(c => `${+c.u.toFixed(4)}${c.socket ? '' : 'F'}`).join(' ');
+
+  ok(shape(cellSizes(3, 1)) === '1 1 1', 'whole count → all full cells');
+  ok(shape(cellSizes(3.5, 1)) === '1 1 1 0.5',
+     'half cell → a real 0.5-unit socket');
+  ok(shape(cellSizes(3.3, 1)) === '1 1 1 0.3F',
+     'sliver too small for a bin → solid filler');
+  ok(shape(cellSizes(3.7, 1)) === '1 1 1 0.5 0.2F',
+     '0.7 leftover → 0.5 socket + 0.2 filler');
+  ok(shape(cellSizes(0.5, 1)) === '0.5', 'a plate can be a single half cell');
+  ok(shape(cellSizes(3.5, 2)) === '2 2 2 1',
+     'half of an 84 mm cell is a real 42 mm socket');
+  ok(shape(cellSizes(2.25, 0.5)) === '0.5 0.5 0.125F',
+     'quarter of a 21 mm cell is too small for any bin → filler');
+
+  // the decomposition must always span exactly count × mult × PITCH
+  let spanOK = true;
+  for (const mult of [0.5, 1, 2, 4])
+    for (let c = 0.5; c <= 8.0001; c += 0.05) {
+      const span = cellSizes(c, mult).reduce((s, x) => s + x.u, 0);
+      if (!near(span, c * mult, 1e-6)) spanOK = false;
+    }
+  ok(spanOK, 'every count 0.5–8 in 0.05 steps spans exactly count × mult');
+
+  // no socket may be narrower than a bin, and no cell may be empty
+  let sizesOK = true;
+  for (const mult of [0.5, 1, 2])
+    for (let c = 0.5; c <= 8.0001; c += 0.05)
+      for (const cell of cellSizes(c, mult)) {
+        if (cell.u <= 0) sizesOK = false;
+        if (cell.socket && cell.u < MIN_SOCKET - 1e-9) sizesOK = false;
+      }
+  ok(sizesOK, 'every socket holds a real bin; no zero-width cells');
+
+  // plates built from fractional counts stay valid and sized to spec
+  for (const [cx, cy, mult] of [
+    [3.5, 3, 1], [3.5, 2.5, 1], [3.3, 2, 1], [3.7, 1.2, 1],
+    [0.5, 0.5, 1], [3.5, 3, 2], [2.25, 2.25, 0.5],
+  ])
+    for (const style of ['normal', 'lite']) {
+      const p = buildBaseplate({ cells_x: cx, cells_y: cy, mult, style });
+      const rep = manifoldReport(p);
+      ok(rep.ok && meshVolume(p) > 0,
+         `${style} plate ${cx}×${cy} (mult ${mult}) is watertight`);
+      ok(near(p.width, cx * mult * GF.PITCH, 1e-6) &&
+         near(p.depth, cy * mult * GF.PITCH, 1e-6),
+         `${style} plate ${cx}×${cy} spans ${p.width.toFixed(2)}×${p.depth.toFixed(2)} mm`);
+    }
+
+  // a half cell really is a socket a 0.5 bin drops into
+  const halfPlate = buildBaseplate({ cells_x: 3.5, cells_y: 1 });
+  ok(halfPlate.sockets === 4, '3.5×1 plate has 4 usable sockets');
+  const bin = buildBin({ units_x: 0.5, units_y: 1, leg_mult: 0.5 });
+  ok(bin.width < footprint(0.5) + 2 * GF.CLEAR,
+     'a 0.5-unit bin fits the half-cell socket opening');
+
+  // a filler strip adds material rather than leaving a useless hole
+  const fillerPlate = buildBaseplate({ cells_x: 3.3, cells_y: 1 });
+  const cleanPlate = buildBaseplate({ cells_x: 3, cells_y: 1 });
+  ok(fillerPlate.sockets === 3 && fillerPlate.cells_x === 4,
+     '3.3×1 plate keeps 3 sockets + 1 filler strip');
+  ok(meshVolume(fillerPlate) > meshVolume(cleanPlate),
+     'the filler strip is solid material, not a hole');
 }
 
 // ── Summary ─────────────────────────────────────────────────
