@@ -93,8 +93,42 @@ ok(/planPlateTiles as gfPlanTiles/.test(js) && /BUILD_PLATES, PLATE_MARGIN/.test
    'imports the build-plate planner and registry');
 ok(/fit_plate: false/.test(js), 'plate splitting is off by default');
 ok(/add\(GP, 'fit_plate'\)/.test(js), 'split toggle present in the GUI');
-ok(/add\(GP, 'printer', plateOptions\(\)\)/.test(js), 'printer dropdown present');
-ok(/add\(GP, 'plate_margin'/.test(js), 'edge margin control present');
+// Printer selection is general, not gridfinity-specific: it must hang
+// off the root GUI, not inside the baseplate folder.
+ok(/const fPrinter = gui\.addFolder\('Printer'\)/.test(js),
+   'printer folder is a top-level GUI folder');
+ok(/fPrinter\.add\(PRINTER, 'id', plateOptions\(\)\)/.test(js),
+   'printer dropdown lives in the top-level folder');
+ok(/fPrinter\.add\(PRINTER, 'margin'/.test(js), 'edge margin control present');
+ok(/fPrinter\.add\(PRINTER, 'show_bed'\)/.test(js), 'canvas indicator toggle present');
+ok(!/fGfFit\.add\(PRINTER/.test(js) && !/fGfPlate\.add\(PRINTER/.test(js),
+   'no printer control is left behind under the baseplate folder');
+ok(/const PRINTER = \{/.test(js) && !/printer: 'elegoo/.test(js),
+   'printer state moved out of the gridfinity params object');
+
+// Build-plate indicator on the canvas
+ok(/const bedGroup = new THREE\.Group\(\)/.test(js), 'bed indicator group exists');
+ok(/function updateBedIndicator\(beds\)/.test(js), 'bed indicator has an update path');
+ok(/updateBedIndicator\(beds\)/.test(js), 'rebuild() refreshes the indicator');
+ok(/rectLoop\(b\.w - 2 \* m, b\.d - 2 \* m/.test(js),
+   'the usable area (bed minus margin) is drawn, not just the bed outline');
+ok(/if \(!PRINTER\.show_bed \|\| !beds/.test(js),
+   'the indicator honours its toggle and an absent bed list');
+
+// Packing tiles onto plates — the feature that saves print jobs
+ok(/packBuildPlates as gfPackPlates/.test(js), 'imports the bed packer');
+ok(/add\(GP, 'layout', \['assembled', 'packed'\]\)/.test(js),
+   'arrangement switch offers assembled and packed');
+ok(/layout: 'assembled'/.test(js), 'layout defaults to assembled');
+ok(/pack\.jobs/.test(js) && /print job/.test(js),
+   'the stats line reports print jobs, not just tile count');
+ok(/pack\.unplaced\.length/.test(js), 'unplaceable tiles are surfaced');
+ok(/Float32Array\.from\(res\.positions\)/.test(js),
+   'cached tile geometry is copied before transform — no double-translate');
+ok(/const cache = new Map\(\)/.test(js) && /meshFor/.test(js),
+   'identical tile sizes are built once and reused');
+ok(/data\.printer/.test(js) && /data\.gridfinity\.plate_margin/.test(js),
+   'sessions written before the printer move still restore their printer');
 ok(/const PLATE_STORE_KEY = 'ow_build_plates'/.test(js),
    'custom plates cache under a namespaced localStorage key');
 ok(/function loadCustomPlates\(\)/.test(js) && /function saveCustomPlates\(/.test(js),

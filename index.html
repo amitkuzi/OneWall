@@ -271,7 +271,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Bin & Container Customizer</span>
-    <span class="ver">v0.1-0718-103850</span>
+    <span class="ver">v0.1-0718-105746</span>
   </div>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
@@ -379,7 +379,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     </p>
 
     <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
-      OneWall · v0.1-0718-103850
+      OneWall · v0.1-0718-105746
     </p>
   </div>
 </dialog>
@@ -504,7 +504,7 @@ import GUI                from 'lil-gui';
 import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
 // Gridfinity Creator — shared math module (also unit-tested in Node)
 import { buildBin as gfBuildBin, buildBaseplate as gfBuildPlate,
-         planPlateTiles as gfPlanTiles,
+         planPlateTiles as gfPlanTiles, packBuildPlates as gfPackPlates,
          BUILD_PLATES, PLATE_MARGIN }
   from './assets/gridfinity.js';
 // STEP writer — faceted B-Rep for CAD import (also unit-tested in Node)
@@ -561,8 +561,20 @@ const GP = {
   cells_x: 3, cells_y: 3, cell_mult: 1,
   corner_r: 4,
   // build-plate fit — split an oversized plate into printable tiles
-  fit_plate: false, printer: 'elegoo_centauri_carbon',
-  plate_margin: PLATE_MARGIN, tile_gap: 4,
+  fit_plate: false, tile_gap: 4,
+  // assembled = tiles where they sit in the drawer; packed = tiles
+  // arranged onto build plates, which is what you slice
+  layout: 'assembled',
+};
+
+// ── Printer / build plate ───────────────────────────────────
+// Not gridfinity-specific: "will this come off my printer?" is a
+// question about a OneWall vase too, so the selection and the canvas
+// indicator live at the top level and apply to whatever is on screen.
+const PRINTER = {
+  id: 'elegoo_centauri_carbon',
+  margin: PLATE_MARGIN,
+  show_bed: true,
 };
 
 // ── Build-plate registry ────────────────────────────────────
@@ -601,7 +613,7 @@ const isCustom   = id => customPlates.some(p => p.id === id);
 // Falls back to the first built-in rather than throwing: a session
 // JSON can name a printer this browser has never cached.
 const currentPlate = () =>
-  allPlates().find(p => p.id === GP.printer) || BUILD_PLATES[0];
+  allPlates().find(p => p.id === PRINTER.id) || BUILD_PLATES[0];
 
 // ════════════════════════════════════════════════════════════
 //  MATH — direct port of OpenSCAD functions
@@ -967,10 +979,17 @@ function buildSigMesh() {
 // cluttered. Instead we render only the bin in the preview and add a
 // fresh signature solid on the fly when the user exports STL.
 // Wrap a gridfinity math result into a positioned THREE geometry.
-function gfPart(res, name, x = 0, y = 0) {
+//
+// The position array is COPIED: `res` may be a cached build shared by
+// several placements of the same tile size, and translate/rotate
+// mutate the array in place — without the copy the second placement
+// would be transformed twice. Indices are immutable, so they share.
+function gfPart(res, name, x = 0, y = 0, rot90 = false) {
   const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.BufferAttribute(res.positions, 3));
+  geom.setAttribute('position',
+    new THREE.BufferAttribute(Float32Array.from(res.positions), 3));
   geom.setIndex(new THREE.BufferAttribute(res.indices, 1));
+  if (rot90) geom.rotateZ(Math.PI / 2);   // about origin — parts are centred
   if (x || y) geom.translate(x, y, 0);
   geom.computeVertexNormals();
   return { geom, verts: res.verts, tris: res.tris, res, name };
@@ -994,18 +1013,52 @@ function buildGridfinityParts() {
   const bp   = currentPlate();
   const plan = gfPlanTiles({
     cells_x: GP.cells_x, cells_y: GP.cells_y, mult: GP.cell_mult,
-    build_w: bp.w, build_d: bp.d, margin: GP.plate_margin,
+    build_w: bp.w, build_d: bp.d, margin: PRINTER.margin,
     plate_h: 5, build_h: bp.h ?? Infinity,
   });
 
-  const gap = GP.tile_gap;
+  const gap  = GP.tile_gap;
+  const name = t => `tile_${t.ix + 1}x${t.iy + 1}`;
+  // Built once per distinct tile and reused: a split plate usually has
+  // only two or three distinct tile sizes, and rebuilding identical
+  // geometry per placement is the difference between a snappy slider
+  // and a visible stall.
+  const cache = new Map();
+  const meshFor = t => {
+    const key = t.xs.map(c => c.u).join(',') + '|' + t.ys.map(c => c.u).join(',');
+    if (!cache.has(key))
+      cache.set(key, gfBuildPlate({ ...base, xs: t.xs, ys: t.ys }));
+    return cache.get(key);
+  };
+
+  if (GP.layout === 'packed') {
+    const pack = gfPackPlates(plan.tiles, {
+      build_w: bp.w, build_d: bp.d, margin: PRINTER.margin, gap,
+    });
+    // Beds sit side by side with a bed-width gutter between them.
+    const pitch = bp.w + PRINTER.margin * 2;
+    const x0 = -((pack.plates.length - 1) * pitch) / 2;
+    const parts = [];
+    const beds  = [];
+    pack.plates.forEach((plate, b) => {
+      const bx = x0 + b * pitch;
+      beds.push({ x: bx, y: 0, w: bp.w, d: bp.d });
+      for (const pl of plate.placements) {
+        const res = meshFor(pl.tile);
+        // A rotated placement is the same solid turned 90° about Z.
+        parts.push(gfPart(res, name(pl.tile) + `_job${b + 1}`,
+                          bx + pl.x, pl.y, pl.rotated));
+      }
+    });
+    return { parts, plan, bp, pack, beds };
+  }
+
   const parts = plan.tiles.map(t => gfPart(
-    gfBuildPlate({ ...base, xs: t.xs, ys: t.ys }),
-    `tile_${t.ix + 1}x${t.iy + 1}`,
+    meshFor(t), name(t),
     t.x + (t.ix - (plan.cols - 1) / 2) * gap,
     t.y + (t.iy - (plan.rows - 1) / 2) * gap));
 
-  return { parts, plan, bp };
+  return { parts, plan, bp, beds: [{ x: 0, y: 0, w: bp.w, d: bp.d }] };
 }
 
 let lastPlan = null;   // tile plan behind the current preview, if any
@@ -1018,10 +1071,13 @@ function rebuild() {
 
   let verts = 0, tris = 0, size = '', note = '';
   lastPlan = null;
+  let beds = null;
 
   if (MODE.mode === 'gridfinity') {
-    const { parts, plan, bp } = buildGridfinityParts();
+    const built = buildGridfinityParts();
+    const { parts, plan, bp, pack } = built;
     lastPlan = plan || null;
+    beds = built.beds;
     for (const p of parts) {
       const mesh = new THREE.Mesh(p.geom, material);
       mesh.name = p.name;
@@ -1034,6 +1090,17 @@ function rebuild() {
       // tiling on top of it.
       size = `${plan.width.toFixed(1)}×${plan.depth.toFixed(1)} mm`;
       note = `  ${plan.cols}×${plan.rows} tiles on ${bp.name}`;
+      if (pack) {
+        // The number that actually costs the user time.
+        const util = pack.plates.length
+          ? Math.round(100 * pack.plates.reduce((s, p) => s + p.utilization, 0)
+                             / pack.plates.length)
+          : 0;
+        note += `  →  ${pack.jobs} print job${pack.jobs === 1 ? '' : 's'}`
+              + ` (${util}% bed use)`;
+        if (pack.unplaced.length)
+          note += `  ⚠ ${pack.unplaced.length} tile(s) do not fit the bed`;
+      }
       if (plan.oversized)
         note += '  ⚠ a cell is wider than the bed — reduce cell size';
       if (plan.tooTall)
@@ -1048,15 +1115,26 @@ function rebuild() {
     printGroup.add(binMesh);
     partMeshes.push(binMesh);
     verts = g.verts; tris = g.tris;
+    // A vase has a bed question too — show the selected plate under it.
+    const bp = currentPlate();
+    beds = [{ x: 0, y: 0, w: bp.w, d: bp.d }];
+    if (P.outer_w > bp.w - 2 * PRINTER.margin ||
+        P.outer_d > bp.d - 2 * PRINTER.margin)
+      note = `  ⚠ wider than the usable bed of ${bp.name}`;
+    else if (bp.h && P.height > bp.h)
+      note = `  ⚠ taller than the build height of ${bp.name}`;
   }
   binMesh = partMeshes[0] || null;
+  updateBedIndicator(beds);
 
   const dt = (performance.now() - t0).toFixed(1);
   stats.textContent = `verts=${verts}  tris=${tris}  rebuild=${dt}ms`
                     + (size ? `  ${size}` : '') + note;
   updateSigBadge();
 }
-rebuild();
+// NOTE: the first rebuild() runs after the build-plate indicator is
+// set up below — rebuild() touches `bedGroup`, which is a const and
+// would be in its temporal dead zone if we called it here.
 
 function updateSigBadge() {
   const badge = document.getElementById('sig-badge');
@@ -1075,6 +1153,63 @@ grid.rotation.x = Math.PI / 2;
 scene.add(grid);
 
 // ════════════════════════════════════════════════════════════
+//  BUILD-PLATE INDICATOR
+// ════════════════════════════════════════════════════════════
+// Draws the selected printer's bed on the canvas so "will this come
+// off my printer?" is answerable by looking, not by reading the
+// dimensions off the stats line and doing arithmetic. Two outlines:
+// the bed itself, and the usable area once the edge margin is taken
+// off — the inner one is the line that actually matters.
+const bedGroup = new THREE.Group();
+scene.add(bedGroup);
+
+const bedMatOuter = new THREE.LineBasicMaterial({ color: 0x6aa6ff, transparent: true, opacity: 0.55 });
+const bedMatInner = new THREE.LineBasicMaterial({ color: 0x6aa6ff, transparent: true, opacity: 0.28 });
+const bedMatFill  = new THREE.MeshBasicMaterial({
+  color: 0x6aa6ff, transparent: true, opacity: 0.045,
+  side: THREE.DoubleSide, depthWrite: false,
+});
+
+function rectLoop(w, d, z, mat) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    -w / 2, -d / 2, z,   w / 2, -d / 2, z,
+     w / 2,  d / 2, z,  -w / 2,  d / 2, z,
+  ]), 3));
+  return new THREE.LineLoop(g, mat);
+}
+
+function clearBed() {
+  for (const c of [...bedGroup.children]) {
+    bedGroup.remove(c);
+    if (c.geometry) c.geometry.dispose();
+  }
+}
+
+// `beds` — [{x, y, w, d}] in world mm. One entry normally; one per
+// print job when the tiles are laid out packed.
+function updateBedIndicator(beds) {
+  clearBed();
+  if (!PRINTER.show_bed || !beds || !beds.length) return;
+  const m = PRINTER.margin;
+  for (const b of beds) {
+    const holder = new THREE.Group();
+    holder.position.set(b.x, b.y, 0);
+    // Just below z=0 so it never z-fights with a part sitting on it.
+    const fill = new THREE.Mesh(new THREE.PlaneGeometry(b.w, b.d), bedMatFill);
+    fill.position.z = -0.06;
+    holder.add(fill);
+    holder.add(rectLoop(b.w, b.d, -0.04, bedMatOuter));
+    if (m > 0 && b.w > 2 * m && b.d > 2 * m)
+      holder.add(rectLoop(b.w - 2 * m, b.d - 2 * m, -0.02, bedMatInner));
+    bedGroup.add(holder);
+  }
+}
+
+// Everything rebuild() touches now exists — draw the first frame.
+rebuild();
+
+// ════════════════════════════════════════════════════════════
 //  GUI
 // ════════════════════════════════════════════════════════════
 const gui = new GUI({ title: 'OneWall' });
@@ -1089,6 +1224,42 @@ const scheduleRebuild = () => {
 gui.add(MODE, 'mode', ['onewall', 'gridfinity'])
    .name('Mode')
    .onChange(() => applyMode());
+
+// — Printer / build plate — top level, applies to both modes —
+// Whether the thing on screen comes off the printer is a question
+// about a OneWall vase as much as a gridfinity plate, so this is not
+// buried under the baseplate folder.
+const fPrinter = gui.addFolder('Printer');
+const plateOptions = () => Object.fromEntries(
+  allPlates().map(p => [`${p.name} (${p.w}×${p.d})`, p.id]));
+let printerCtrl = fPrinter.add(PRINTER, 'id', plateOptions())
+  .name('Build plate').onChange(scheduleRebuild);
+fPrinter.add(PRINTER, 'margin', 0, 25, 0.5)
+  .name('Edge margin (mm)').onChange(scheduleRebuild);
+fPrinter.add(PRINTER, 'show_bed')
+  .name('Show plate on canvas').onChange(scheduleRebuild);
+
+// lil-gui cannot mutate a dropdown's options in place — .options()
+// replaces the controller, so the handle has to be reassigned.
+function refreshPrinterList() {
+  printerCtrl = printerCtrl.options(plateOptions())
+    .name('Build plate').onChange(scheduleRebuild);
+  scheduleRebuild();
+}
+
+fPrinter.add({ add: () => openPlateDialog() }, 'add').name('Add printer…');
+fPrinter.add({ del: () => {
+  if (!isCustom(PRINTER.id)) {
+    stats.textContent = '⚠ built-in printers cannot be removed';
+    return;
+  }
+  const gone = allPlates().find(p => p.id === PRINTER.id);
+  customPlates = customPlates.filter(p => p.id !== PRINTER.id);
+  saveCustomPlates(customPlates);
+  PRINTER.id = BUILD_PLATES[0].id;
+  refreshPrinterList();
+  stats.textContent = `removed printer "${gone.name}"`;
+} }, 'del').name('Remove printer');
 
 // — Geometry folders —
 const fOuter = gui.addFolder('Outer Dimensions');
@@ -1193,34 +1364,11 @@ fGfPlate.add(GP, 'cell_mult', UNIT_OPTS).name('Cell size (×42 mm)').onChange(sc
 // two halves no bin can sit in. Tiles butt back together seamlessly.
 const fGfFit = fGfPlate.addFolder('Fit to build plate');
 fGfFit.add(GP, 'fit_plate').name('Split to fit printer').onChange(scheduleRebuild);
-const plateOptions = () => Object.fromEntries(
-  allPlates().map(p => [`${p.name} (${p.w}×${p.d})`, p.id]));
-let printerCtrl = fGfFit.add(GP, 'printer', plateOptions())
-  .name('Printer').onChange(scheduleRebuild);
-fGfFit.add(GP, 'plate_margin', 0, 25, 0.5).name('Edge margin (mm)').onChange(scheduleRebuild);
-fGfFit.add(GP, 'tile_gap', 0, 20, 1).name('Preview gap (mm)').onChange(scheduleRebuild);
-
-// lil-gui cannot mutate a dropdown's options in place — .options()
-// replaces the controller, so the handle has to be reassigned.
-function refreshPrinterList() {
-  printerCtrl = printerCtrl.options(plateOptions())
-    .name('Printer').onChange(scheduleRebuild);
-  scheduleRebuild();
-}
-
-fGfFit.add({ add: () => openPlateDialog() }, 'add').name('Add printer…');
-fGfFit.add({ del: () => {
-  if (!isCustom(GP.printer)) {
-    stats.textContent = '⚠ built-in printers cannot be removed';
-    return;
-  }
-  const gone = allPlates().find(p => p.id === GP.printer);
-  customPlates = customPlates.filter(p => p.id !== GP.printer);
-  saveCustomPlates(customPlates);
-  GP.printer = BUILD_PLATES[0].id;
-  refreshPrinterList();
-  stats.textContent = `removed printer "${gone.name}"`;
-} }, 'del').name('Remove printer');
+// "assembled" answers "what will my drawer look like"; "packed"
+// answers "how many prints is this", which is the expensive question.
+fGfFit.add(GP, 'layout', ['assembled', 'packed'])
+  .name('Arrangement').onChange(scheduleRebuild);
+fGfFit.add(GP, 'tile_gap', 0, 20, 1).name('Part spacing (mm)').onChange(scheduleRebuild);
 
 fGf.add(GP, 'corner_r', 1, 8, 0.5).name('Corner radius').onChange(scheduleRebuild);
 
@@ -1256,7 +1404,7 @@ plateForm.addEventListener('submit', ev => {
 
   customPlates.push({ id, name, w, d, h: h > 0 ? h : undefined, custom: true });
   const stored = saveCustomPlates(customPlates);
-  GP.printer = id;
+  PRINTER.id = id;
   refreshPrinterList();
   plateDialog.close();
   stats.textContent = `added printer "${name}" (${w}×${d} mm)`
@@ -1322,6 +1470,7 @@ function snapshotSession() {
     mode:     MODE.mode,
     params:   { ...P },
     gridfinity: { ...GP },
+    printer: { ...PRINTER },
     // Carried along so a session that selects a custom printer still
     // resolves it on a machine that has never cached that printer.
     buildPlates: customPlates,
@@ -1359,6 +1508,18 @@ function restoreSession(data) {
   if (data.gridfinity)
     for (const k of Object.keys(GP))
       if (k in data.gridfinity) GP[k] = data.gridfinity[k];
+
+  if (data.printer)
+    for (const k of Object.keys(PRINTER))
+      if (k in data.printer) PRINTER[k] = data.printer[k];
+  else if (data.gridfinity) {
+    // Sessions written before the printer settings moved out of the
+    // gridfinity block still carry them there — read them back rather
+    // than silently resetting someone's printer to the default.
+    if (data.gridfinity.printer)      PRINTER.id     = data.gridfinity.printer;
+    if ('plate_margin' in data.gridfinity)
+      PRINTER.margin = data.gridfinity.plate_margin;
+  }
 
   // Custom printers merge in by id — a session adds the ones this
   // browser is missing and never clobbers one already cached here.

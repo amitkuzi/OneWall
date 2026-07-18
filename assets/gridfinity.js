@@ -637,6 +637,94 @@ export function planPlateTiles(params = {}) {
   };
 }
 
+// Pack tiles onto as few build plates as possible.
+//
+// Splitting a plate into tiles says nothing about how many PRINTS it
+// costs: two 168×84 tiles are two rectangles but they stack onto a
+// single 170×170 bed, so that is one print job, not two. This does
+// the arranging, and it is where the saved prints actually come from.
+//
+// Shelf packing, tallest-first, rotation allowed. Not optimal —
+// optimal 2D bin packing is NP-hard — but for the handful of
+// same-height rectangles a split plate produces it reliably finds the
+// obvious wins, and every placement is reported so nothing is hidden.
+//
+// Positions come back as centres relative to the centre of the bed,
+// which is what the preview and the exporters both want.
+export function packBuildPlates(tiles, params = {}) {
+  const {
+    build_w = 250, build_d = 250, margin = PLATE_MARGIN,
+    gap = 3, rotate = true,
+  } = params;
+
+  const W = Math.max(0, build_w - 2 * margin);
+  const D = Math.max(0, build_d - 2 * margin);
+
+  // Orient landscape and sort deepest-first: shelves waste least when
+  // the parts sharing one are close to the same depth.
+  const items = tiles.map((tile, i) => {
+    const land = rotate && tile.depth > tile.width;
+    return {
+      tile, i,
+      w: land ? tile.depth : tile.width,
+      d: land ? tile.width : tile.depth,
+      rotated: land,
+    };
+  }).sort((a, b) => (b.d - a.d) || (b.w - a.w));
+
+  const plates = [];
+  const unplaced = [];
+  let plate = null, shelfY = 0, shelfH = 0, cursorX = 0;
+
+  const newPlate = () => {
+    plate = { index: plates.length, placements: [], used: 0 };
+    plates.push(plate);
+    shelfY = 0; shelfH = 0; cursorX = 0;
+  };
+
+  for (const it of items) {
+    // Pick the orientation that fits; a tile that fits in neither is
+    // unprintable on this bed and is reported rather than dropped.
+    let w = it.w, d = it.d, rot = it.rotated;
+    if (!(w <= W + 1e-9 && d <= D + 1e-9)) {
+      if (rotate && it.d <= W + 1e-9 && it.w <= D + 1e-9) {
+        w = it.d; d = it.w; rot = !rot;
+      } else {
+        unplaced.push(it.tile);
+        continue;
+      }
+    }
+
+    if (!plate) newPlate();
+    // Wrap to the next shelf when this part overhangs the bed.
+    if (cursorX > 0 && cursorX + w > W + 1e-9) {
+      shelfY += shelfH + gap;
+      cursorX = 0; shelfH = 0;
+    }
+    // Out of shelves — start another print job.
+    if (shelfY + d > D + 1e-9) newPlate();
+
+    plate.placements.push({
+      tile: it.tile, rotated: rot, w, d,
+      x: cursorX - W / 2 + w / 2,
+      y: shelfY - D / 2 + d / 2,
+    });
+    plate.used += w * d;
+    cursorX += w + gap;
+    shelfH = Math.max(shelfH, d);
+  }
+
+  const bedArea = W * D;
+  for (const p of plates)
+    p.utilization = bedArea > 0 ? p.used / bedArea : 0;
+
+  return {
+    plates, unplaced,
+    jobs: plates.length,
+    usableW: W, usableD: D,
+  };
+}
+
 // ── Analysis helpers (used by tests) ────────────────────────
 export function meshVolume({ positions, indices }) {
   let v = 0;

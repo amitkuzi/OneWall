@@ -5,7 +5,7 @@
 // Run: node tests/build-plate.test.mjs
 import {
   GF, BUILD_PLATES, PLATE_MARGIN, packRuns, planPlateTiles,
-  cellSizes, buildBaseplate, meshVolume, manifoldReport,
+  packBuildPlates, cellSizes, buildBaseplate, meshVolume, manifoldReport,
 } from '../assets/gridfinity.js';
 
 let pass = 0, fail = 0;
@@ -165,6 +165,88 @@ const viaTiles = buildBaseplate({ xs: fits.tiles[0].xs, ys: fits.tiles[0].ys });
 const direct   = buildBaseplate({ cells_x: 3, cells_y: 3, mult: 1 });
 ok(viaTiles.tris === direct.tris && near(viaTiles.width, direct.width),
    'a plate that needs no split builds identically with or without the planner');
+
+// ── 7. Packing tiles onto build plates ──────────────────────
+// This is where saved prints come from: splitting says how many
+// PIECES, packing says how many PRINT JOBS, and they are not the
+// same number.
+console.log('\npackBuildPlates');
+const A1 = { build_w: 180, build_d: 180, margin: PLATE_MARGIN, gap: 3 };
+
+// Two 168×80 tiles are two rectangles but they stack on one bed:
+// 80 + 3 gap + 80 = 163, inside the 170 usable depth.
+const stacked = packBuildPlates(
+  [{ width: 168, depth: 80 }, { width: 168, depth: 80 }], A1);
+ok(stacked.jobs === 1, 'two 168×80 tiles share a single 180×180 bed — one print');
+ok(stacked.plates[0].placements.length === 2, 'both land on the same plate');
+ok(!stacked.unplaced.length, 'nothing left over');
+
+// …and three of them do not (3×80 + 2 gaps = 246 > 170).
+ok(packBuildPlates(
+  [{ width: 168, depth: 80 }, { width: 168, depth: 80 }, { width: 168, depth: 80 }],
+  A1).jobs === 2, 'a third 168×80 tile needs a second print');
+
+// Part spacing is real bed space, not decoration: two 84-deep tiles
+// sum to exactly 168 but need 171 with the gap, so they do not fit —
+// and do fit once the gap is removed.
+ok(packBuildPlates([{ width: 168, depth: 84 }, { width: 168, depth: 84 }],
+     { ...A1, gap: 3 }).jobs === 2,
+   'part spacing is charged against the bed (2×84 + 3 > 170)');
+ok(packBuildPlates([{ width: 168, depth: 84 }, { width: 168, depth: 84 }],
+     { ...A1, gap: 0 }).jobs === 1,
+   'the same two tiles fit when spacing is set to zero');
+
+// Placements must stay inside the usable bed and not overlap.
+const check = pack => {
+  const W = pack.usableW, D = pack.usableD;
+  for (const plate of pack.plates) {
+    for (const p of plate.placements) {
+      if (p.x - p.w / 2 < -W / 2 - 1e-6 || p.x + p.w / 2 > W / 2 + 1e-6) return 'out of bed X';
+      if (p.y - p.d / 2 < -D / 2 - 1e-6 || p.y + p.d / 2 > D / 2 + 1e-6) return 'out of bed Y';
+    }
+    for (let i = 0; i < plate.placements.length; i++)
+      for (let j = i + 1; j < plate.placements.length; j++) {
+        const a = plate.placements[i], b = plate.placements[j];
+        const ox = Math.abs(a.x - b.x) < (a.w + b.w) / 2 - 1e-6;
+        const oy = Math.abs(a.y - b.y) < (a.d + b.d) / 2 - 1e-6;
+        if (ox && oy) return 'overlap';
+      }
+  }
+  return null;
+};
+ok(check(stacked) === null, 'placements sit inside the bed and do not overlap');
+
+// The real case: a 5×5 plate on an A1 mini splits into 4 uneven tiles
+// that pack onto 2 beds rather than needing 4 separate prints.
+const p55 = planPlateTiles({ cells_x: 5, cells_y: 5, mult: 1, ...A1 });
+const k55 = packBuildPlates(p55.tiles, A1);
+ok(p55.tiles.length === 4, '5×5 plate splits into 4 tiles');
+ok(k55.jobs < p55.tiles.length,
+   `packing beats one-print-per-tile (${k55.jobs} jobs for ${p55.tiles.length} tiles)`);
+ok(check(k55) === null, 'the 5×5 packing is valid');
+ok(!k55.unplaced.length, 'every tile of a correctly-planned split is placeable');
+
+// Rotation: a 40×160 tile only fits a 170×60 usable bed sideways.
+const rot = packBuildPlates([{ width: 40, depth: 160 }],
+  { build_w: 180, build_d: 70, margin: 5, gap: 3 });
+ok(rot.jobs === 1 && rot.plates[0].placements[0].rotated,
+   'a tile that only fits sideways is rotated rather than declared unprintable');
+ok(packBuildPlates([{ width: 40, depth: 160 }],
+     { build_w: 180, build_d: 70, margin: 5, rotate: false }).unplaced.length === 1,
+   'with rotation off the same tile is reported unplaced');
+
+// A tile larger than the bed in both orientations cannot be printed.
+ok(packBuildPlates([{ width: 400, depth: 400 }], A1).unplaced.length === 1,
+   'an oversized tile is reported, not silently placed off the bed');
+
+ok(packBuildPlates([], A1).jobs === 0, 'no tiles means no print jobs');
+
+// Every tile must appear exactly once across the plan.
+const total = k55.plates.reduce((s, p) => s + p.placements.length, 0)
+            + k55.unplaced.length;
+ok(total === p55.tiles.length, 'every tile is placed exactly once');
+ok(k55.plates.every(p => p.utilization > 0 && p.utilization <= 1),
+   'reported bed utilization is a sane fraction');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
