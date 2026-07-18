@@ -550,7 +550,7 @@ export function buildBaseplate(params = {}) {
 // Users add their own via addBuildPlate() — those are cached in
 // localStorage by the app so they survive a reload.
 export const BUILD_PLATES = [
-  { id: 'elegoo_centauri_carbon', name: 'Elegoo Centauri Carbon', w: 256, d: 256, h: 256 },
+  { id: 'elegoo_centauri_carbon', name: 'Elegoo Centauri Carbon', w: 250, d: 250, h: 250 },
   { id: 'bambu_a1_mini',          name: 'Bambu Lab A1 mini',      w: 180, d: 180, h: 180 },
 ];
 
@@ -591,7 +591,7 @@ export function packRuns(cells, maxMM) {
 export function planPlateTiles(params = {}) {
   const {
     cells_x = 3, cells_y = 3, mult = 1,
-    build_w = 256, build_d = 256, margin = PLATE_MARGIN,
+    build_w = 250, build_d = 250, margin = PLATE_MARGIN,
     plate_h = 5, build_h = Infinity,
   } = params;
 

@@ -19,9 +19,9 @@ const near = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
 console.log('\nbuilt-in build plates');
 const byId = Object.fromEntries(BUILD_PLATES.map(p => [p.id, p]));
 ok(byId.elegoo_centauri_carbon &&
-   byId.elegoo_centauri_carbon.w === 256 &&
-   byId.elegoo_centauri_carbon.d === 256,
-   'Elegoo Centauri Carbon is 256×256');
+   byId.elegoo_centauri_carbon.w === 250 &&
+   byId.elegoo_centauri_carbon.d === 250,
+   'Elegoo Centauri Carbon is 250×250');
 ok(byId.bambu_a1_mini &&
    byId.bambu_a1_mini.w === 180 && byId.bambu_a1_mini.d === 180,
    'Bambu Lab A1 mini is 180×180');
@@ -58,30 +58,29 @@ ok(mixed.reduce((s, r) => s + r.cells.length, 0) === 5,
 // ── 3. planPlateTiles ───────────────────────────────────────
 console.log('\nplanPlateTiles');
 
-const mini = planPlateTiles({
-  cells_x: 8, cells_y: 8, mult: 1,
-  build_w: 180, build_d: 180, margin: PLATE_MARGIN,
+// Plan against the real registry entries rather than repeating their
+// dimensions here — a hardcoded bed size silently goes stale the next
+// time a printer's specs are corrected.
+const planFor = (id, cells_x, cells_y, mult = 1) => planPlateTiles({
+  cells_x, cells_y, mult,
+  build_w: byId[id].w, build_d: byId[id].d, margin: PLATE_MARGIN,
 });
+
+const mini = planFor('bambu_a1_mini', 8, 8);
 ok(mini.cols === 2 && mini.rows === 2, '8×8 plate → 2×2 tiles on the A1 mini');
 ok(mini.tiles.length === 4, 'tile count is cols × rows');
 ok(!mini.single, 'a split plate is not reported as a single piece');
 ok(near(mini.width, 8 * GF.PITCH) && near(mini.depth, 8 * GF.PITCH),
    'plan reports the full plate size, not a tile size');
 
-const centauri = planPlateTiles({
-  cells_x: 8, cells_y: 8, mult: 1,
-  build_w: 256, build_d: 256, margin: PLATE_MARGIN,
-});
+const centauri = planFor('elegoo_centauri_carbon', 8, 8);
 ok(centauri.cols === 2 && centauri.rows === 2,
    '8×8 plate → 2×2 tiles on the Centauri Carbon (5+3 cells per axis)');
 ok(centauri.tiles.some(t => near(t.width, 5 * GF.PITCH)) &&
    centauri.tiles.some(t => near(t.width, 3 * GF.PITCH)),
    'runs fill greedily — a 5-cell tile then the 3-cell remainder');
 
-const fits = planPlateTiles({
-  cells_x: 3, cells_y: 3, mult: 1,
-  build_w: 256, build_d: 256, margin: PLATE_MARGIN,
-});
+const fits = planFor('elegoo_centauri_carbon', 3, 3);
 ok(fits.single && fits.tiles.length === 1,
    'a plate that already fits comes back as one tile');
 
