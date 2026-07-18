@@ -34,7 +34,8 @@ continuous wall — the model is delivered as a solid body.
 | File | Purpose |
 |------|---------|
 | `onewall.scad` | Main parametric script (Customizer-ready) |
-| `index.html`   | Instant browser preview — same math in Three.js, with lighting controls + STL export |
+| `index.html`   | Instant browser preview — same math in Three.js, with lighting controls + STL / STEP export |
+| `assets/step-exporter.js` | Faceted STEP (AP214) writer used by the preview's STEP button |
 | `README.md`      | This file |
 
 ## Live Web Preview
@@ -60,6 +61,15 @@ What you get:
   restores the whole preview state (sliders refresh and the mesh
   rebuilds)
 - **Download STL** button (binary STL of the current preview)
+- **Download STEP** button — the same geometry as an ISO-10303-21
+  AP214 solid, for importing into Fusion / SolidWorks / FreeCAD
+
+> The STEP export is **faceted**: the preview is a triangle mesh, so
+> every triangle ships as its own planar face. It imports as a solid
+> body, not as an editable feature tree, and the file is large
+> (~10 MB for a 2×2×3 gridfinity bin, ~30 MB for 4×4×6). Use it for
+> assembly reference and fitting checks — not as a CAD starting
+> point. For printing, prefer the STL.
 
 > The `.scad` file remains the source of truth for printing. The
 > preview is a fast iteration tool — when you like a shape, replicate

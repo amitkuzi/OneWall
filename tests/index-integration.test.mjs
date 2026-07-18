@@ -62,6 +62,23 @@ ok(/gridfinity_plate_/.test(js), 'plate STL filename branch present');
 ok(/MODE\.mode === 'gridfinity'\)\s*\?\s*null : makeSigCarveGeometry\(\)/.test(js),
    'signature carve skipped for all gridfinity parts');
 
+// 5b. STEP export shares the carve + naming with STL
+ok(/from '\.\/assets\/step-exporter\.js'/.test(js), 'imports ./assets/step-exporter.js');
+ok(/function exportBaseName\(\)/.test(js), 'filename stem factored out for both writers');
+ok(/async function prepareExportRoot\(/.test(js), 'carve factored out for both writers');
+ok((js.match(/prepareExportRoot\(/g) || []).length === 3,
+   'STL and STEP both go through prepareExportRoot()');
+ok((js.match(/(?<!function )makeSigCarveGeometry\(\)/g) || []).length === 1,
+   'signature carve has exactly one call site');
+ok(/exportBaseName\(\) \+ '\.stl'/.test(js) && /name \+ '\.step'/.test(js),
+   'both exports derive their filename from the shared stem');
+ok(/\.name\('Download STEP \(faceted\)'\)/.test(js),
+   'GUI button says "faceted" so nobody expects smooth NURBS');
+ok(/owTrack\('step_export'/.test(js) || /trackExport\('step_export'/.test(js),
+   'STEP export is tracked separately from STL');
+ok(/finally \{\s*disposeExportRoot\(prep\);/.test(js),
+   'STEP export disposes carved geometry even when the write throws');
+
 // 6. normal/lite style, lip, dividers
 ok(/'style',\s*\['normal',\s*'lite'\]/.test(js), 'style dropdown offers normal/lite');
 ok(/style:\s*'normal'/.test(js), 'style defaults to normal');

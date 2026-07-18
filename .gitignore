@@ -20,3 +20,10 @@ onewall_session_*.json
 
 # STL exports — derived artifacts, regenerate from .scad / preview.html
 *.stl
+
+# STEP exports — same deal, and a faceted bin runs to tens of MB
+*.step
+*.stp
+
+# graphify knowledge graph — generated from the repo, rebuild with /graphify
+graphify-out/
