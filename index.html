@@ -243,7 +243,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Bin & Container Customizer</span>
-    <span class="ver">v0.1-0716-210326</span>
+    <span class="ver">v0.1-0718-101355</span>
   </div>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
@@ -351,7 +351,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     </p>
 
     <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
-      OneWall · v0.1-0716-210326
+      OneWall · v0.1-0718-101355
     </p>
   </div>
 </dialog>
@@ -448,6 +448,8 @@ import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
 // Gridfinity Creator — shared math module (also unit-tested in Node)
 import { buildBin as gfBuildBin, buildBaseplate as gfBuildPlate }
   from './assets/gridfinity.js';
+// STEP writer — faceted B-Rep for CAD import (also unit-tested in Node)
+import { exportSTEP as meshToSTEP } from './assets/step-exporter.js';
 
 // ════════════════════════════════════════════════════════════
 //  PARAMETERS — mirror of onewall.scad
@@ -1235,10 +1237,15 @@ function makeSigCarveGeometry() {
   return geom;
 }
 
-async function exportSTL() {
-  stats.textContent = 'preparing STL…';
-  await new Promise(r => requestAnimationFrame(r));
-
+// Build the geometry both exporters ship: the bin with the signature
+// carved out of its underside, or — when CSG is unavailable or the
+// signature is off — the raw preview group. STL and STEP must never
+// diverge here, so the carve lives in one place and each writer just
+// serializes whatever `exportRoot` comes back as.
+//
+// Caller owns the returned geometry: call disposeExportRoot() when the
+// file has been written.
+async function prepareExportRoot(fmt) {
   let exportRoot = printGroup;
   let carvedMesh = null;
   let sigGeom    = null;
@@ -1295,7 +1302,7 @@ async function exportSTL() {
         carveOK    = true;
 
         const dt = (performance.now() - t0).toFixed(0);
-        stats.textContent = `✓ carved in ${dt} ms — writing STL…`;
+        stats.textContent = `✓ carved in ${dt} ms — writing ${fmt}…`;
         await new Promise(r => requestAnimationFrame(r));
       } catch (err) {
         console.error('OneWall CSG carve failed:', err);
@@ -1304,45 +1311,115 @@ async function exportSTL() {
       }
     }
   }
+  return { exportRoot, carvedMesh, sigGeom, carveOK };
+}
 
-  const stl  = exp.parse(exportRoot, { binary: true });
-  const blob = new Blob([stl], { type: 'application/octet-stream' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
+function disposeExportRoot({ carvedMesh, sigGeom }) {
+  if (carvedMesh) carvedMesh.geometry.dispose();
+  if (sigGeom)    sigGeom.dispose();
+}
+
+// Filename stem, shared by both writers so an STL and a STEP of the
+// same configuration sit next to each other with matching names.
+function exportBaseName() {
   const gfSuffix = (GP.style === 'lite' ? '_lite' : '');
   // Fractional cell counts carry float noise from the slider — trim
   // them so the filename reads 3.5, not 3.5000000000000004.
   const num = v => String(+(+v).toFixed(2));
-  const stlName = MODE.mode === 'gridfinity'
-    ? (GP.part === 'bin'
-        ? `gridfinity_bin_${GP.units_x}x${GP.units_y}x${GP.height_units}`
-          + gfSuffix
-          + (GP.style !== 'lite' && (GP.div_x || GP.div_y)
-              ? `_div${GP.div_x}x${GP.div_y}` : '')
-          + '.stl'
-        : `gridfinity_plate_${num(GP.cells_x)}x${num(GP.cells_y)}`
-          + `_m${GP.cell_mult}` + gfSuffix + '.stl')
-    : 'onewall_bin.stl';
-  a.href = url; a.download = stlName; a.click();
-  URL.revokeObjectURL(url);
+  if (MODE.mode !== 'gridfinity') return 'onewall_bin';
+  return GP.part === 'bin'
+    ? `gridfinity_bin_${GP.units_x}x${GP.units_y}x${GP.height_units}`
+      + gfSuffix
+      + (GP.style !== 'lite' && (GP.div_x || GP.div_y)
+          ? `_div${GP.div_x}x${GP.div_y}` : '')
+    : `gridfinity_plate_${num(GP.cells_x)}x${num(GP.cells_y)}`
+      + `_m${GP.cell_mult}` + gfSuffix;
+}
 
-  // Analytics — the main "tool was used" signal.
-  window.owTrack && owTrack('stl_export', {
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function trackExport(event, extra) {
+  window.owTrack && owTrack(event, {
     mode:         MODE.mode,
     gf_part:      GP.part,
     wall_texture: P.wall_texture,
     lip_style:    P.lip_style,
     mid_profile:  P.mid_profile,
-    signature:    P.sig_enabled
+    signature:    P.sig_enabled,
+    ...extra
   });
+}
 
-  if (carvedMesh) carvedMesh.geometry.dispose();
-  if (sigGeom)    sigGeom.dispose();
+async function exportSTL() {
+  stats.textContent = 'preparing STL…';
+  await new Promise(r => requestAnimationFrame(r));
 
-  if (carveOK) stats.textContent = '✓ STL with engraved signature exported';
+  const prep = await prepareExportRoot('STL');
+  const stl  = exp.parse(prep.exportRoot, { binary: true });
+  downloadBlob(new Blob([stl], { type: 'application/octet-stream' }),
+               exportBaseName() + '.stl');
+
+  // Analytics — the main "tool was used" signal.
+  trackExport('stl_export');
+  disposeExportRoot(prep);
+
+  if (prep.carveOK) stats.textContent = '✓ STL with engraved signature exported';
+}
+
+async function exportStepFile() {
+  stats.textContent = 'preparing STEP…';
+  await new Promise(r => requestAnimationFrame(r));
+
+  const prep = await prepareExportRoot('STEP');
+  try {
+    const t0 = performance.now();
+    const name = exportBaseName();
+    const res  = meshToSTEP(prep.exportRoot, {
+      name,
+      filename: name + '.step',
+      author:   P.sig_text || '',
+      org:      'OneWall',
+    });
+    const blob = new Blob(res.parts, { type: 'application/step' });
+    downloadBlob(blob, name + '.step');
+
+    const mb = (blob.size / 1048576).toFixed(1);
+    const dt = (performance.now() - t0).toFixed(0);
+    trackExport('step_export', {
+      faces:        res.triangles,
+      non_manifold: res.nonManifoldEdges,
+    });
+    // Say "faceted" in the result too, not just on the button — this is
+    // the moment someone finds out whether they got what they expected.
+    stats.textContent = `✓ STEP exported — ${res.triangles} faceted faces, `
+                      + `${mb} MB, ${dt} ms`;
+    // The gridfinity meshes are watertight but not manifold, so the
+    // shell CAD receives is not a clean solid. Say so rather than let
+    // someone discover it when the import warns at them.
+    const dropped = res.skipped + res.collapsed;
+    if (res.nonManifoldEdges || res.openEdges || dropped) {
+      const notes = [];
+      if (res.nonManifoldEdges) notes.push(`${res.nonManifoldEdges} non-manifold edges`);
+      if (res.openEdges)        notes.push(`${res.openEdges} open edges`);
+      if (dropped)              notes.push(`${dropped} degenerate faces dropped`);
+      stats.textContent += `  ⚠ ${notes.join(', ')} — CAD may need to sew/heal`;
+      console.warn('OneWall STEP: imperfect shell —', notes.join(', '));
+    }
+  } catch (err) {
+    console.error('OneWall STEP export failed:', err);
+    stats.textContent = '⚠ STEP export failed: ' + err.message;
+  } finally {
+    disposeExportRoot(prep);
+  }
 }
 
 gui.add({ exportSTL }, 'exportSTL').name('Download STL (engraved)');
+gui.add({ exportStepFile }, 'exportStepFile').name('Download STEP (faceted)');
 
 // ════════════════════════════════════════════════════════════
 //  RESIZE + RENDER LOOP
