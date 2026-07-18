@@ -388,10 +388,14 @@ export function buildBaseplate(params = {}) {
     cells_x = 3, cells_y = 3, mult = 1,
     corner_r = 4, spacing = 2, plate_h = 5, clear = GF.CLEAR,
     style = 'normal',
+    // Explicit cell lists (as returned by cellSizes) override the
+    // count+mult pair — that is how planPlateTiles() hands a single
+    // tile of a split plate back to be built.
+    xs: xsIn = null, ys: ysIn = null,
   } = params;
 
-  const xs = cellSizes(cells_x, mult);
-  const ys = cellSizes(cells_y, mult);
+  const xs = xsIn || cellSizes(cells_x, mult);
+  const ys = ysIn || cellSizes(cells_y, mult);
   const span = list => list.reduce((s, c) => s + c.u, 0) * GF.PITCH;
   const width = span(xs);
   const depth = span(ys);
@@ -525,6 +529,111 @@ export function buildBaseplate(params = {}) {
     cells_x: xs.length, cells_y: ys.length,
     sockets: xs.filter(c => c.socket).length * ys.filter(c => c.socket).length,
     verts: positions.length / 3, tris: indices.length / 3,
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+//  BUILD-PLATE FITTING
+// ════════════════════════════════════════════════════════════
+// A drawer-sized baseplate is routinely bigger than the printer it
+// has to come off. Rather than making the user do the arithmetic and
+// build each piece by hand, we cut the plate into tiles that each fit
+// a named build plate, and build every tile as a baseplate in its own
+// right.
+//
+// The cut always lands on a CELL boundary. Splitting through a socket
+// would leave two halves that no bin can sit in, so a tile boundary is
+// only ever placed between cells — which also means the tiles butt
+// together with no seam inside a socket when laid back down.
+
+// Built-in printers, dimensions in mm (usable bed X × Y, max Z).
+// Users add their own via addBuildPlate() — those are cached in
+// localStorage by the app so they survive a reload.
+export const BUILD_PLATES = [
+  { id: 'elegoo_centauri_carbon', name: 'Elegoo Centauri Carbon', w: 256, d: 256, h: 256 },
+  { id: 'bambu_a1_mini',          name: 'Bambu Lab A1 mini',      w: 180, d: 180, h: 180 },
+];
+
+// Default edge clearance, mm per side — brim/skirt room plus the
+// couple of mm most beds lose to clips and the purge line.
+export const PLATE_MARGIN = 5;
+
+// Greedily group consecutive cells into runs no longer than maxMM.
+// Greedy is optimal here: the cells are laid out in a fixed order, so
+// packing each run as full as it goes minimises the number of runs.
+//
+// A single cell wider than maxMM cannot be split (that would cut a
+// socket), so it goes out alone and is flagged `oversized` — the
+// caller surfaces that rather than silently shipping an unprintable
+// tile.
+export function packRuns(cells, maxMM) {
+  const runs = [];
+  let cur = [], curMM = 0;
+  for (const c of cells) {
+    const mm = c.u * GF.PITCH;
+    if (cur.length && curMM + mm > maxMM + 1e-9) {
+      runs.push({ cells: cur, mm: curMM });
+      cur = []; curMM = 0;
+    }
+    cur.push(c); curMM += mm;
+  }
+  if (cur.length) runs.push({ cells: cur, mm: curMM });
+  for (const r of runs) r.oversized = r.mm > maxMM + 1e-9;
+  return runs;
+}
+
+// Plan the split of a baseplate across a build plate.
+//
+// Returns the tile grid: each tile carries the cell lists to build it
+// with, its own size, and the offset of its centre from the centre of
+// the whole plate — so laying every tile at `x, y` reassembles exactly
+// the plate the user asked for.
+export function planPlateTiles(params = {}) {
+  const {
+    cells_x = 3, cells_y = 3, mult = 1,
+    build_w = 256, build_d = 256, margin = PLATE_MARGIN,
+    plate_h = 5, build_h = Infinity,
+  } = params;
+
+  const usableW = Math.max(GF.PITCH * MIN_SOCKET, build_w - 2 * margin);
+  const usableD = Math.max(GF.PITCH * MIN_SOCKET, build_d - 2 * margin);
+
+  const xs = cellSizes(cells_x, mult);
+  const ys = cellSizes(cells_y, mult);
+  const cols = packRuns(xs, usableW);
+  const rows = packRuns(ys, usableD);
+
+  const width = xs.reduce((s, c) => s + c.u, 0) * GF.PITCH;
+  const depth = ys.reduce((s, c) => s + c.u, 0) * GF.PITCH;
+
+  const tiles = [];
+  let yoff = -depth / 2;
+  for (let iy = 0; iy < rows.length; iy++) {
+    const row = rows[iy];
+    let xoff = -width / 2;
+    for (let ix = 0; ix < cols.length; ix++) {
+      const col = cols[ix];
+      tiles.push({
+        ix, iy,
+        xs: col.cells, ys: row.cells,
+        width: col.mm, depth: row.mm,
+        x: xoff + col.mm / 2,
+        y: yoff + row.mm / 2,
+        oversized: col.oversized || row.oversized,
+      });
+      xoff += col.mm;
+    }
+    yoff += row.mm;
+  }
+
+  return {
+    tiles, cols: cols.length, rows: rows.length,
+    width, depth, usableW, usableD,
+    // True when the plate already fits — the caller can then skip the
+    // whole split and build it as one piece.
+    single: cols.length === 1 && rows.length === 1,
+    oversized: tiles.some(t => t.oversized),
+    tooTall: plate_h > build_h + 1e-9,
   };
 }
 
