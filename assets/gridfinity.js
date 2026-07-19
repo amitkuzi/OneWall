@@ -388,10 +388,14 @@ export function buildBaseplate(params = {}) {
     cells_x = 3, cells_y = 3, mult = 1,
     corner_r = 4, spacing = 2, plate_h = 5, clear = GF.CLEAR,
     style = 'normal',
+    // Explicit cell lists (as returned by cellSizes) override the
+    // count+mult pair — that is how planPlateTiles() hands a single
+    // tile of a split plate back to be built.
+    xs: xsIn = null, ys: ysIn = null,
   } = params;
 
-  const xs = cellSizes(cells_x, mult);
-  const ys = cellSizes(cells_y, mult);
+  const xs = xsIn || cellSizes(cells_x, mult);
+  const ys = ysIn || cellSizes(cells_y, mult);
   const span = list => list.reduce((s, c) => s + c.u, 0) * GF.PITCH;
   const width = span(xs);
   const depth = span(ys);
@@ -525,6 +529,199 @@ export function buildBaseplate(params = {}) {
     cells_x: xs.length, cells_y: ys.length,
     sockets: xs.filter(c => c.socket).length * ys.filter(c => c.socket).length,
     verts: positions.length / 3, tris: indices.length / 3,
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+//  BUILD-PLATE FITTING
+// ════════════════════════════════════════════════════════════
+// A drawer-sized baseplate is routinely bigger than the printer it
+// has to come off. Rather than making the user do the arithmetic and
+// build each piece by hand, we cut the plate into tiles that each fit
+// a named build plate, and build every tile as a baseplate in its own
+// right.
+//
+// The cut always lands on a CELL boundary. Splitting through a socket
+// would leave two halves that no bin can sit in, so a tile boundary is
+// only ever placed between cells — which also means the tiles butt
+// together with no seam inside a socket when laid back down.
+
+// Built-in printers, dimensions in mm (usable bed X × Y, max Z).
+// Users add their own via addBuildPlate() — those are cached in
+// localStorage by the app so they survive a reload.
+export const BUILD_PLATES = [
+  { id: 'elegoo_centauri_carbon', name: 'Elegoo Centauri Carbon', w: 250, d: 250, h: 250 },
+  { id: 'bambu_a1_mini',          name: 'Bambu Lab A1 mini',      w: 180, d: 180, h: 180 },
+];
+
+// Default edge clearance, mm per side — brim/skirt room plus the
+// couple of mm most beds lose to clips and the purge line.
+export const PLATE_MARGIN = 5;
+
+// Greedily group consecutive cells into runs no longer than maxMM.
+// Greedy is optimal here: the cells are laid out in a fixed order, so
+// packing each run as full as it goes minimises the number of runs.
+//
+// A single cell wider than maxMM cannot be split (that would cut a
+// socket), so it goes out alone and is flagged `oversized` — the
+// caller surfaces that rather than silently shipping an unprintable
+// tile.
+export function packRuns(cells, maxMM) {
+  const runs = [];
+  let cur = [], curMM = 0;
+  for (const c of cells) {
+    const mm = c.u * GF.PITCH;
+    if (cur.length && curMM + mm > maxMM + 1e-9) {
+      runs.push({ cells: cur, mm: curMM });
+      cur = []; curMM = 0;
+    }
+    cur.push(c); curMM += mm;
+  }
+  if (cur.length) runs.push({ cells: cur, mm: curMM });
+  for (const r of runs) r.oversized = r.mm > maxMM + 1e-9;
+  return runs;
+}
+
+// Plan the split of a baseplate across a build plate.
+//
+// Returns the tile grid: each tile carries the cell lists to build it
+// with, its own size, and the offset of its centre from the centre of
+// the whole plate — so laying every tile at `x, y` reassembles exactly
+// the plate the user asked for.
+export function planPlateTiles(params = {}) {
+  const {
+    cells_x = 3, cells_y = 3, mult = 1,
+    build_w = 250, build_d = 250, margin = PLATE_MARGIN,
+    plate_h = 5, build_h = Infinity,
+  } = params;
+
+  const usableW = Math.max(GF.PITCH * MIN_SOCKET, build_w - 2 * margin);
+  const usableD = Math.max(GF.PITCH * MIN_SOCKET, build_d - 2 * margin);
+
+  const xs = cellSizes(cells_x, mult);
+  const ys = cellSizes(cells_y, mult);
+  const cols = packRuns(xs, usableW);
+  const rows = packRuns(ys, usableD);
+
+  const width = xs.reduce((s, c) => s + c.u, 0) * GF.PITCH;
+  const depth = ys.reduce((s, c) => s + c.u, 0) * GF.PITCH;
+
+  const tiles = [];
+  let yoff = -depth / 2;
+  for (let iy = 0; iy < rows.length; iy++) {
+    const row = rows[iy];
+    let xoff = -width / 2;
+    for (let ix = 0; ix < cols.length; ix++) {
+      const col = cols[ix];
+      tiles.push({
+        ix, iy,
+        xs: col.cells, ys: row.cells,
+        width: col.mm, depth: row.mm,
+        x: xoff + col.mm / 2,
+        y: yoff + row.mm / 2,
+        oversized: col.oversized || row.oversized,
+      });
+      xoff += col.mm;
+    }
+    yoff += row.mm;
+  }
+
+  return {
+    tiles, cols: cols.length, rows: rows.length,
+    width, depth, usableW, usableD,
+    // True when the plate already fits — the caller can then skip the
+    // whole split and build it as one piece.
+    single: cols.length === 1 && rows.length === 1,
+    oversized: tiles.some(t => t.oversized),
+    tooTall: plate_h > build_h + 1e-9,
+  };
+}
+
+// Pack tiles onto as few build plates as possible.
+//
+// Splitting a plate into tiles says nothing about how many PRINTS it
+// costs: two 168×84 tiles are two rectangles but they stack onto a
+// single 170×170 bed, so that is one print job, not two. This does
+// the arranging, and it is where the saved prints actually come from.
+//
+// Shelf packing, tallest-first, rotation allowed. Not optimal —
+// optimal 2D bin packing is NP-hard — but for the handful of
+// same-height rectangles a split plate produces it reliably finds the
+// obvious wins, and every placement is reported so nothing is hidden.
+//
+// Positions come back as centres relative to the centre of the bed,
+// which is what the preview and the exporters both want.
+export function packBuildPlates(tiles, params = {}) {
+  const {
+    build_w = 250, build_d = 250, margin = PLATE_MARGIN,
+    gap = 3, rotate = true,
+  } = params;
+
+  const W = Math.max(0, build_w - 2 * margin);
+  const D = Math.max(0, build_d - 2 * margin);
+
+  // Orient landscape and sort deepest-first: shelves waste least when
+  // the parts sharing one are close to the same depth.
+  const items = tiles.map((tile, i) => {
+    const land = rotate && tile.depth > tile.width;
+    return {
+      tile, i,
+      w: land ? tile.depth : tile.width,
+      d: land ? tile.width : tile.depth,
+      rotated: land,
+    };
+  }).sort((a, b) => (b.d - a.d) || (b.w - a.w));
+
+  const plates = [];
+  const unplaced = [];
+  let plate = null, shelfY = 0, shelfH = 0, cursorX = 0;
+
+  const newPlate = () => {
+    plate = { index: plates.length, placements: [], used: 0 };
+    plates.push(plate);
+    shelfY = 0; shelfH = 0; cursorX = 0;
+  };
+
+  for (const it of items) {
+    // Pick the orientation that fits; a tile that fits in neither is
+    // unprintable on this bed and is reported rather than dropped.
+    let w = it.w, d = it.d, rot = it.rotated;
+    if (!(w <= W + 1e-9 && d <= D + 1e-9)) {
+      if (rotate && it.d <= W + 1e-9 && it.w <= D + 1e-9) {
+        w = it.d; d = it.w; rot = !rot;
+      } else {
+        unplaced.push(it.tile);
+        continue;
+      }
+    }
+
+    if (!plate) newPlate();
+    // Wrap to the next shelf when this part overhangs the bed.
+    if (cursorX > 0 && cursorX + w > W + 1e-9) {
+      shelfY += shelfH + gap;
+      cursorX = 0; shelfH = 0;
+    }
+    // Out of shelves — start another print job.
+    if (shelfY + d > D + 1e-9) newPlate();
+
+    plate.placements.push({
+      tile: it.tile, rotated: rot, w, d,
+      x: cursorX - W / 2 + w / 2,
+      y: shelfY - D / 2 + d / 2,
+    });
+    plate.used += w * d;
+    cursorX += w + gap;
+    shelfH = Math.max(shelfH, d);
+  }
+
+  const bedArea = W * D;
+  for (const p of plates)
+    p.utilization = bedArea > 0 ? p.used / bedArea : 0;
+
+  return {
+    plates, unplaced,
+    jobs: plates.length,
+    usableW: W, usableD: D,
   };
 }
 

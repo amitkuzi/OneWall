@@ -33,8 +33,8 @@ ok(/const MODE = \{ mode: 'onewall' \}/.test(js), 'MODE state defaults to onewal
 ok(/gui\.add\(MODE, 'mode', \['onewall', 'gridfinity'\]\)/.test(js), 'mode dropdown in GUI');
 ok(/function applyMode\(\)/.test(js), 'applyMode() defined');
 ok(/fGf\.hide\(\)/.test(js), 'gridfinity folder hidden on load');
-ok(/buildGridfinityGeometry/.test(js) &&
-   /MODE\.mode === 'gridfinity'\s*\?\s*buildGridfinityGeometry\(\)/.test(js),
+ok(/buildGridfinityParts/.test(js) &&
+   /if \(MODE\.mode === 'gridfinity'\) \{[\s\S]*?buildGridfinityParts\(\)/.test(js),
    'rebuild() branches on mode');
 
 // 3. GUI offers the required multipliers
@@ -66,8 +66,8 @@ ok(/MODE\.mode === 'gridfinity'\)\s*\?\s*null : makeSigCarveGeometry\(\)/.test(j
 ok(/from '\.\/assets\/step-exporter\.js'/.test(js), 'imports ./assets/step-exporter.js');
 ok(/function exportBaseName\(\)/.test(js), 'filename stem factored out for both writers');
 ok(/async function prepareExportRoot\(/.test(js), 'carve factored out for both writers');
-ok((js.match(/prepareExportRoot\(/g) || []).length === 3,
-   'STL and STEP both go through prepareExportRoot()');
+ok((js.match(/prepareExportRoot\(/g) || []).length === 4,
+   'STL, STEP and 3MF all go through prepareExportRoot()');
 ok((js.match(/(?<!function )makeSigCarveGeometry\(\)/g) || []).length === 1,
    'signature carve has exactly one call site');
 ok(/exportBaseName\(\) \+ '\.stl'/.test(js) && /name \+ '\.step'/.test(js),
@@ -87,6 +87,85 @@ ok(/add\(GP,\s*'div_x',\s*0,\s*8,\s*1\)/.test(js) &&
    /add\(GP,\s*'div_y',\s*0,\s*8,\s*1\)/.test(js), 'divider sliders present');
 ok(/add\(GP,\s*'wall_t'/.test(js), 'wall thickness control present');
 ok(/_lite/.test(js), 'STL filename marks lite style');
+
+// 7. build-plate fitting — GUI, cache and preview wiring
+ok(/planPlateTiles as gfPlanTiles/.test(js) && /BUILD_PLATES, PLATE_MARGIN/.test(js),
+   'imports the build-plate planner and registry');
+ok(/fit_plate: false/.test(js), 'plate splitting is off by default');
+ok(/add\(GP, 'fit_plate'\)/.test(js), 'split toggle present in the GUI');
+// Printer selection is general, not gridfinity-specific: it must hang
+// off the root GUI, not inside the baseplate folder.
+ok(/const fPrinter = gui\.addFolder\('Printer'\)/.test(js),
+   'printer folder is a top-level GUI folder');
+ok(/fPrinter\.add\(PRINTER, 'id', plateOptions\(\)\)/.test(js),
+   'printer dropdown lives in the top-level folder');
+ok(/fPrinter\.add\(PRINTER, 'margin'/.test(js), 'edge margin control present');
+ok(/fPrinter\.add\(PRINTER, 'show_bed'\)/.test(js), 'canvas indicator toggle present');
+ok(!/fGfFit\.add\(PRINTER/.test(js) && !/fGfPlate\.add\(PRINTER/.test(js),
+   'no printer control is left behind under the baseplate folder');
+ok(/const PRINTER = \{/.test(js) && !/printer: 'elegoo/.test(js),
+   'printer state moved out of the gridfinity params object');
+
+// Build-plate indicator on the canvas
+ok(/const bedGroup = new THREE\.Group\(\)/.test(js), 'bed indicator group exists');
+ok(/function updateBedIndicator\(beds\)/.test(js), 'bed indicator has an update path');
+ok(/updateBedIndicator\(beds\)/.test(js), 'rebuild() refreshes the indicator');
+ok(/rectLoop\(b\.w - 2 \* m, b\.d - 2 \* m/.test(js),
+   'the usable area (bed minus margin) is drawn, not just the bed outline');
+ok(/if \(!PRINTER\.show_bed \|\| !beds/.test(js),
+   'the indicator honours its toggle and an absent bed list');
+
+// Packing tiles onto plates — the feature that saves print jobs
+ok(/packBuildPlates as gfPackPlates/.test(js), 'imports the bed packer');
+ok(/add\(GP, 'layout', \['assembled', 'packed'\]\)/.test(js),
+   'arrangement switch offers assembled and packed');
+ok(/layout: 'assembled'/.test(js), 'layout defaults to assembled');
+ok(/pack\.jobs/.test(js) && /print job/.test(js),
+   'the stats line reports print jobs, not just tile count');
+ok(/pack\.unplaced\.length/.test(js), 'unplaceable tiles are surfaced');
+ok(/Float32Array\.from\(res\.positions\)/.test(js),
+   'cached tile geometry is copied before transform — no double-translate');
+ok(/const cache = new Map\(\)/.test(js) && /meshFor/.test(js),
+   'identical tile sizes are built once and reused');
+ok(/data\.printer/.test(js) && /data\.gridfinity\.plate_margin/.test(js),
+   'sessions written before the printer move still restore their printer');
+ok(/const PLATE_STORE_KEY = 'ow_build_plates'/.test(js),
+   'custom plates cache under a namespaced localStorage key');
+ok(/function loadCustomPlates\(\)/.test(js) && /function saveCustomPlates\(/.test(js),
+   'cache read and write are both defined');
+ok(/catch \(e\) \{[\s\S]{0,120}return \[\];/.test(js),
+   'an unreadable cache degrades to the built-ins instead of throwing');
+ok(/function refreshPrinterList\(\)/.test(js) && /printerCtrl = printerCtrl\.options\(/.test(js),
+   'adding a printer rebuilds the dropdown (lil-gui replaces the controller)');
+ok(/plateForm\.addEventListener\('submit'/.test(js),
+   'the add-plate dialog is wired to a form submit, not a chain of prompts');
+ok(/while \(allPlates\(\)\.some\(p => p\.id === id\)\)/.test(js),
+   'duplicate printer names get unique ids instead of overwriting');
+ok(/buildPlates: customPlates/.test(js) && /Array\.isArray\(data\.buildPlates\)/.test(js),
+   'custom printers round-trip through the session JSON');
+ok(/function buildGridfinityParts\(\)/.test(js) && /const partMeshes = \[\]/.test(js),
+   'the preview holds one mesh per tile');
+ok(/gfBuildPlate\(\{ \.\.\.base, xs: t\.xs, ys: t\.ys \}\)/.test(js),
+   'each tile is built as a baseplate from its own cell lists');
+ok(/plan\.oversized/.test(js) && /plan\.tooTall/.test(js),
+   'oversize and height warnings surface in the stats line');
+ok(/_fit\$\{lastPlan\.cols\}x\$\{lastPlan\.rows\}/.test(js),
+   'a split plate gets its own filename so it cannot collide with the whole one');
+
+// 8. 3MF export
+ok(/from '\.\/assets\/threemf-exporter\.js'/.test(js),
+   'imports ./assets/threemf-exporter.js');
+ok(/async function export3MF\(\)/.test(js), 'export3MF() defined');
+ok(/downloadBlob\(blob, name \+ '\.3mf'\)/.test(js),
+   '3MF download derives its filename from the shared stem');
+ok(/type: 'model\/3mf'/.test(js), 'blob carries the 3MF MIME type');
+ok(/\.name\('Download 3MF \(mm, multi-part\)'\)/.test(js),
+   'GUI button says what 3MF buys over STL');
+ok(/trackExport\('threemf_export'/.test(js),
+   '3MF export is tracked separately');
+ok(/finally \{\s*disposeExportRoot\(prep\);[\s\S]{0,40}\}\s*\}\s*\n\s*gui\.add\(\{ exportSTL/.test(js)
+   || (js.match(/finally \{\s*disposeExportRoot\(prep\);/g) || []).length === 2,
+   '3MF export disposes carved geometry even when the write throws');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
