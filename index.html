@@ -2,7 +2,45 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>OneWall — Vase-Mode Bin & Container Customizer</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>OneWall — Vase-Mode Bin &amp; Gridfinity Customizer</title>
+<meta name="description" content="Free browser customizer for vase-mode bins, containers and Gridfinity bins &amp; baseplates — by Amit Kuzi. Parametric geometry in the browser, export STL / STEP / 3MF. Nothing is uploaded.">
+<meta name="author" content="Amit Kuzi">
+<link rel="canonical" href="https://amitkuzi.github.io/OneWall/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="OneWall — Vase-Mode Bin &amp; Gridfinity Customizer">
+<meta property="og:description" content="Design vase-mode containers and Gridfinity bins in the browser, then export STL, STEP or 3MF. Free, no upload, no install.">
+<meta property="og:image" content="https://amitkuzi.github.io/OneWall/assets/og.png">
+<meta property="og:url" content="https://amitkuzi.github.io/OneWall/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OneWall — Vase-Mode Bin &amp; Gridfinity Customizer">
+<meta name="twitter:description" content="Parametric geometry in the browser: vase-mode containers and Gridfinity bins, exported as STL / STEP / 3MF.">
+<meta name="twitter:image" content="https://amitkuzi.github.io/OneWall/assets/og.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "@id": "https://amitkuzi.github.io/OneWall/#app",
+  "name": "OneWall",
+  "url": "https://amitkuzi.github.io/OneWall/",
+  "applicationCategory": "DesignApplication",
+  "operatingSystem": "Any",
+  "browserRequirements": "Requires a modern browser with WebGL",
+  "description": "A browser-based parametric customizer for vase-mode bins and containers and for Gridfinity bins and baseplates. Geometry is generated client-side and exported as STL, STEP or 3MF.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "isAccessibleForFree": true,
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "author": {
+    "@type": "Person",
+    "@id": "https://amitkuzi.com/#amit-kuzi",
+    "name": "Amit Kuzi",
+    "jobTitle": "Software Architect & Engineering Consultant",
+    "url": "https://amitkuzi.com",
+    "sameAs": ["https://github.com/amitkuzi"]
+  }
+}
+</script>
 
 <!-- Google Tag Manager -->
 <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -75,13 +113,13 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px;
   }
   #header nav { display: flex; gap: 6px; align-items: center; }
-  #header button.nav {
+  #header button.nav, #header a.nav {
     background: transparent; color: var(--fg);
     border: 1px solid var(--border); border-radius: 6px;
     padding: 4px 10px; font-size: 12px; cursor: pointer;
-    font-family: inherit;
+    font-family: inherit; text-decoration: none; line-height: 1.5;
   }
-  #header button.nav:hover { border-color: var(--accent); color: var(--accent); }
+  #header button.nav:hover, #header a.nav:hover { border-color: var(--accent); color: var(--accent); }
   #header .lang {
     min-width: 44px; font-variant: small-caps;
   }
@@ -276,6 +314,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
     <button class="nav" id="btn-about" data-i18n="nav.about">About</button>
+    <a class="nav" href="about.html">Docs</a>
     <button class="nav lang" id="btn-lang" title="Switch language">EN</button>
   </nav>
 </header>
@@ -414,12 +453,13 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="about-name">
         <span class="about-handle">@Amitkuzi</span>
         <span class="about-real">Amit Kuzi</span>
-        <span class="about-loc">Israel</span>
+        <span class="about-loc">Holon, Israel</span>
       </div>
     </div>
 
     <p>
-      Software architect and engineering leader from Israel.
+      <strong>Amit Kuzi</strong> — Software Architect &amp; Engineering Consultant,
+      based in Holon, Israel. Building software since 1997.
       I build backend systems by day, parametric prints by night.
     </p>
     <p>
@@ -432,9 +472,12 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
     <h3>Links</h3>
     <div class="links">
+      <a href="https://amitkuzi.com" rel="author">amitkuzi.com</a>
+      <a href="https://amitkuzi.com/projects/onewall/">Case study</a>
       <a href="https://www.linkedin.com/in/amitkuzi/" target="_blank" rel="noopener">LinkedIn</a>
       <a href="https://github.com/amitkuzi"           target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/amitkuzi/OneWall"   target="_blank" rel="noopener">OneWall repo</a>
+      <a href="https://amitkuzi.github.io/localViewer/" target="_blank" rel="noopener">localViewer</a>
     </div>
 
     <h3>⚠ Slicer settings — required for the bottom signature</h3>
@@ -469,7 +512,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
     <h3>License &amp; credits</h3>
     <p>
-      OneWall is released under <strong>CC BY 4.0</strong>. Built with
+      The OneWall <strong>code</strong> is released under <strong>Apache-2.0</strong>;
+      the <strong>models you generate and publish</strong> are under
+      <strong>CC BY 4.0</strong> — remix freely, keep the attribution. Built with
       OpenSCAD, Three.js, lil-gui and three-bvh-csg. Every OneWall print
       carries the <code>@Amitkuzi</code> bottom signature
       (Gridfinity parts export clean, without it).

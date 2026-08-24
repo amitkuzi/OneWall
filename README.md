@@ -1,5 +1,8 @@
 # OneWall — Parametric Vase-Mode Bin & Container
 
+> **Built by [Amit Kuzi](https://amitkuzi.com)** — Software Architect & Engineering Consultant, Holon, Israel
+> [Live app](https://amitkuzi.github.io/OneWall/) · [Docs & FAQ](https://amitkuzi.github.io/OneWall/about.html) · [Architecture case study](https://amitkuzi.com/projects/onewall/) · [GitHub](https://github.com/amitkuzi)
+
 > Standalone repo: <https://github.com/amitkuzi/OneWall>
 > Live preview: served from the repo's GitHub Pages
 
@@ -258,8 +261,16 @@ The wall is a single nozzle-wide spiral, so geometry — not material
 
 ## License
 
-Add your preferred license here before publishing
-(MakerWorld defaults to **CC BY 4.0**; Printables lets you pick).
+Two licences, deliberately split:
+
+| What | Licence |
+|------|---------|
+| The **code** — `onewall.scad`, `gridfinity.scad`, `index.html`, `assets/*.js` | **Apache-2.0** ([LICENSE](LICENSE)) |
+| The **models you generate and publish** from it | **CC BY 4.0** |
+
+CC BY is the deliberate choice for the models: it is the MakerWorld default, and its
+attribution requirement means every remix carries the credit back. Do not relicense the
+generated models as CC0.
 
 ---
 

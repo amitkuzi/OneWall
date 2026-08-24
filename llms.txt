@@ -1,0 +1,46 @@
+# OneWall
+
+A free, browser-based parametric customizer for vase-mode bins and containers, and for
+Gridfinity bins and baseplates. Geometry is generated client-side and exported as STL,
+STEP (AP214) or 3MF. No account, no install, no upload.
+
+## Key features
+
+- **Vase-mode containers**: tapered single-wall shells with three controllable height sections and a textured wall profile.
+- **Gridfinity**: bins and baseplates on the 42 mm grid; oversized baseplates are split into tiles that fit the build plate.
+- **Build-plate preview**: your printer's usable bed is drawn under the model and cached in the browser.
+- **Export**: STL, 3MF, and faceted STEP (AP214).
+- **Client-side only**: nothing is uploaded; the page is a static file on GitHub Pages.
+
+## Technical notes
+
+- Single static page, no build step.
+- The OpenSCAD source (`onewall.scad`, `gridfinity.scad`) is Customizer-ready for MakerWorld, Printables and Thangs.
+- The same parametric maths is re-implemented in JavaScript for the browser preview.
+- Rendering: three.js (WebGL) + lil-gui; boolean operations via three-bvh-csg.
+- Export writers: `assets/step-exporter.js` (AP214), `assets/threemf-exporter.js`.
+
+## Built by
+
+Amit Kuzi — Software Architect & Engineering Consultant, Holon, Israel.
+Building software since 1997. See https://amitkuzi.com
+
+## Documentation
+
+https://amitkuzi.github.io/OneWall/about.html
+
+## Repository
+
+https://github.com/amitkuzi/OneWall
+
+## License
+
+Apache-2.0 for the code; generated models are CC BY 4.0.
+
+## Live app
+
+https://amitkuzi.github.io/OneWall/
+
+## Related
+
+https://amitkuzi.github.io/localViewer/ — local-first viewer for STL / 3MF / STEP / SCAD and text formats, by the same author.

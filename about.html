@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>What is OneWall? — Vase-Mode &amp; Gridfinity Customizer Docs</title>
+<meta name="description" content="What OneWall is, which problem it solves, which formats it exports (STL, STEP, 3MF), and answers to the common questions. A browser-based parametric geometry tool by Amit Kuzi.">
+<meta name="author" content="Amit Kuzi">
+<link rel="canonical" href="https://amitkuzi.github.io/OneWall/about.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="What is OneWall? — Vase-Mode &amp; Gridfinity Customizer Docs">
+<meta property="og:description" content="Parametric geometry in the browser: vase-mode containers and Gridfinity bins, exported as STL / STEP / 3MF.">
+<meta property="og:image" content="https://amitkuzi.github.io/OneWall/assets/og.png">
+<meta property="og:url" content="https://amitkuzi.github.io/OneWall/about.html">
+<meta name="twitter:card" content="summary_large_image">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "@id": "https://amitkuzi.github.io/OneWall/about.html#page",
+  "name": "What is OneWall?",
+  "url": "https://amitkuzi.github.io/OneWall/about.html",
+  "about": { "@id": "https://amitkuzi.github.io/OneWall/#app" },
+  "author": {
+    "@type": "Person",
+    "@id": "https://amitkuzi.com/#amit-kuzi",
+    "name": "Amit Kuzi",
+    "jobTitle": "Software Architect & Engineering Consultant",
+    "url": "https://amitkuzi.com",
+    "sameAs": ["https://github.com/amitkuzi"]
+  }
+}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Public+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ground:#f4efe7; --base:#221e1a; --ember:#e4632d; --ember-ink:#b8431a;
+    --brass:#c9a227; --line:#e0d6c6; --line-strong:#c9bca6;
+    --fg:#221e1a; --fg2:#6e6357; --fg-on-base:#b5a797;
+    --measure:54ch;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--ground);color:var(--fg);line-height:1.6;
+       font-family:"Public Sans",ui-sans-serif,system-ui,Segoe UI,sans-serif}
+  h1,h2,h3{font-family:"Archivo",ui-sans-serif,system-ui,sans-serif;
+           line-height:1.06;letter-spacing:-.01em}
+  a{color:var(--ember-ink)}
+  .wrap{max-width:72ch;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+  .top{background:var(--base);color:var(--fg-on-base)}
+  .top .wrap{padding:1.75rem 1.25rem}
+  .top h1{color:#f2a97c;margin:0 0 .35rem;font-size:clamp(1.8rem,5vw,2.6rem)}
+  .top p{margin:0;max-width:var(--measure)}
+  .launch{display:inline-block;margin-top:1.1rem;background:var(--ember);color:#fff;
+          text-decoration:none;font-weight:600;padding:.6rem 1.1rem;border-radius:6px}
+  h2{margin:2.5rem 0 .5rem;padding-bottom:.45rem;border-bottom:3px solid var(--line-strong)}
+  h3{margin:1.6rem 0 .35rem;font-size:1.05rem}
+  p,li{max-width:var(--measure)}
+  table{border-collapse:collapse;margin:.75rem 0;width:100%}
+  th,td{border:1px solid var(--line);padding:.45rem .6rem;text-align:left;font-size:.95rem}
+  th{background:#ece5da}
+  code{background:#ece5da;border:1px solid var(--line);border-radius:3px;padding:.05rem .3rem}
+  .faq{margin:.9rem 0;padding-bottom:.9rem;border-bottom:1px solid var(--line)}
+  .faq h3{margin-top:0}
+  footer.author{margin-top:3rem;padding-top:1.5rem;border-top:3px solid var(--line-strong)}
+  footer.author .meta{color:var(--fg2);font-size:.9rem}
+  .cat{color:var(--brass);font-size:.75rem;letter-spacing:.14em;text-transform:uppercase}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="wrap">
+    <span class="cat">OneWall · Documentation</span>
+    <h1>What is OneWall?</h1>
+    <p>A free, browser-based parametric customizer for vase-mode containers and
+       Gridfinity bins and baseplates. Nothing installs, nothing uploads.</p>
+    <a class="launch" href="./">Launch the live tool →</a>
+  </div>
+</div>
+
+<main class="wrap">
+
+<h2>The problem it solves</h2>
+<p><strong>Vase-mode</strong> (spiral-mode) printing produces a container out of a single
+continuous extrusion — fast, strong enough for organisers, and it uses almost no material.
+The catch is the geometry: the model must be one solid tapered shell whose outer perimeter
+can be spiralised. Editing that by hand in a CAD program for every drawer, shelf or drilled
+box size is tedious, and most ready-made models on the sharing platforms come in exactly
+one size.</p>
+<p>OneWall moves the parametric model into the browser. You set the dimensions, the taper,
+the wall texture and the section heights, watch the geometry rebuild live, and export a
+printable file. The same page also generates <strong>Gridfinity</strong> bins and baseplates
+on the 42&nbsp;mm grid, draws your build plate underneath the model, and splits oversized
+baseplates into tiles that actually fit the bed.</p>
+
+<h2>Formats and export</h2>
+<table>
+  <tr><th>Format</th><th>Use</th></tr>
+  <tr><td><code>.stl</code></td><td>Universal mesh — slice it in any slicer</td></tr>
+  <tr><td><code>.step</code> (AP214)</td><td>Faceted solid for CAD round-trips</td></tr>
+  <tr><td><code>.3mf</code></td><td>Mesh plus metadata for modern slicers</td></tr>
+  <tr><td><code>.scad</code></td><td>The original OpenSCAD source lives in the repo</td></tr>
+</table>
+
+<h2>How it works</h2>
+<p>The same parametric maths that drives the OpenSCAD script (<code>onewall.scad</code>) is
+re-implemented in JavaScript and evaluated on every parameter change. The resulting profile
+is lofted into a mesh, boolean operations are performed client-side with
+<em>three-bvh-csg</em>, and the result is rendered in a <em>Three.js</em> WebGL canvas with
+<em>lil-gui</em> controls. Export writers turn the same mesh into STL, 3MF, or a faceted
+AP214 STEP file. There is no server: the geometry is built, previewed and exported entirely
+on your machine.</p>
+
+<h2>Printing it</h2>
+<p>Vase-mode needs two slicer settings — spiral/vase mode on, and <strong>bottom shell
+layers ≥ 2</strong> (3 recommended). The <code>@Amitkuzi</code> signature engraved into the
+floor is one layer deep (0.2&nbsp;mm); with a single bottom layer it punches through and is
+visible from inside the bin.</p>
+<table>
+  <tr><th>Slicer</th><th>Vase mode</th><th>Bottom shell</th></tr>
+  <tr><td>Bambu Studio</td><td>Strength → Spiral vase ON, Wall loops 1</td><td>Bottom shell layers = 3</td></tr>
+  <tr><td>PrusaSlicer</td><td>Layers → Spiral vase ON</td><td>Solid layers / Bottom = 3</td></tr>
+  <tr><td>Cura</td><td>Special Modes → Spiralize Outer Contour ON</td><td>Shell → Bottom Layers = 3</td></tr>
+</table>
+
+<h2>FAQ</h2>
+<div itemscope itemtype="https://schema.org/FAQPage">
+
+  <div class="faq" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+    <h3 itemprop="name">Is OneWall free?</h3>
+    <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+      <p itemprop="text">Yes. The tool is free to use with no account and no installation. The
+      source code is on GitHub under Apache-2.0, and the models you generate are released
+      under CC BY 4.0 — publish and remix them, keep the attribution.</p>
+    </div>
+  </div>
+
+  <div class="faq" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+    <h3 itemprop="name">Do my designs get uploaded anywhere?</h3>
+    <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+      <p itemprop="text">No. All geometry is generated and exported in your browser. The page
+      is a static file served from GitHub Pages; there is no backend that could receive a
+      model. You can confirm it in DevTools → Network while exporting.</p>
+    </div>
+  </div>
+
+  <div class="faq" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+    <h3 itemprop="name">What is vase mode, and why does the model look solid?</h3>
+    <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+      <p itemprop="text">Vase (spiral) mode makes the slicer print the outer perimeter as one
+      continuous, nozzle-wide wall with no layer seam. The exported model is delivered as a
+      solid body on purpose — the slicer, not the model, does the spiralising.</p>
+    </div>
+  </div>
+
+  <div class="faq" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+    <h3 itemprop="name">Can it make Gridfinity bins and baseplates?</h3>
+    <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+      <p itemprop="text">Yes. The Gridfinity mode generates bins and baseplates on the
+      standard 42 mm grid. Baseplates larger than your build plate are automatically split
+      into tiles that fit, with the plate outline drawn under the model.</p>
+    </div>
+  </div>
+
+  <div class="faq" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+    <h3 itemprop="name">Which file formats can I export?</h3>
+    <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+      <p itemprop="text">STL, 3MF and faceted STEP (AP214). The original parametric source is
+      an OpenSCAD script in the repository, so the model can also be customised on MakerWorld,
+      Printables or Thangs through their Customizers.</p>
+    </div>
+  </div>
+
+  <div class="faq" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+    <h3 itemprop="name">What does it need to run?</h3>
+    <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+      <p itemprop="text">Any modern desktop or mobile browser with WebGL. No install, no
+      account, no plugin. Heavier boolean operations are faster on a desktop GPU.</p>
+    </div>
+  </div>
+
+</div>
+
+<footer class="author">
+  <p><strong>Built by <a href="https://amitkuzi.com" rel="author">Amit Kuzi</a></strong>
+     — Software Architect &amp; Engineering Consultant</p>
+  <p class="meta">Amit Kuzi is an independent software architect in Holon, Israel. He has been
+     building software since 1997 and works across software architecture, .NET modernisation,
+     applied AI, and 3D printing process. OneWall is what parametric geometry looks like when
+     it is treated as a software problem.</p>
+  <p class="meta">
+    <a href="https://amitkuzi.com">amitkuzi.com</a> ·
+    <a href="https://amitkuzi.com/projects/onewall/">Architecture case study</a> ·
+    <a href="https://github.com/amitkuzi/OneWall">Source on GitHub</a> ·
+    <a href="https://amitkuzi.github.io/localViewer/">localViewer</a>
+  </p>
+</footer>
+
+</main>
+</body>
+</html>
