@@ -271,7 +271,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Containers &amp; Gridfinity Bins / Baseplates</span>
-    <span class="ver">v0.1-0825-084500</span>
+    <span class="ver">v0.1-0825-091200</span>
   </div>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
@@ -476,7 +476,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     </p>
 
     <p style="margin-top: 12px; color: var(--muted); font-size: 12px;">
-      OneWall · v0.1-0718-105746
+      OneWall · <span id="about-stamp"></span>
     </p>
   </div>
 </dialog>
@@ -959,6 +959,9 @@ const statsRoot = document.getElementById('stats');        // container
 // the About modal. Single source of truth: `#brand .ver`.
 const BUILD_STAMP = (document.querySelector('#brand .ver')?.textContent || '').trim();
 document.getElementById('stats-stamp').textContent = BUILD_STAMP;
+// The About colophon read from a hand-typed copy of the stamp and went
+// stale every release — it reads the header now, like everything else.
+document.getElementById('about-stamp').textContent = BUILD_STAMP;
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
