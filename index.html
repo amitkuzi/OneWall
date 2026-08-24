@@ -270,8 +270,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <header id="header">
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
-    <span class="tagline" data-i18n="tagline">Vase-Mode Bin & Container Customizer</span>
-    <span class="ver">v0.1-0718-105746</span>
+    <span class="tagline" data-i18n="tagline">Vase-Mode Containers &amp; Gridfinity Bins / Baseplates</span>
+    <span class="ver">v0.1-0825-084500</span>
   </div>
   <nav>
     <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
@@ -287,25 +287,115 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <button class="close" aria-label="Close">&times;</button>
   </header>
   <div class="ow-body">
-    <h3 data-i18n="help.intro_title">What is OneWall?</h3>
+    <h3 data-i18n="help.intro_title">Two modes, one browser tab: a vase-mode container, or a Gridfinity drawer that fits your printer</h3>
     <p data-i18n="help.intro">
-      OneWall is a parametric customizer for vase-mode 3D-printed bins
-      and containers. Adjust the sliders to shape the wall, texture and
-      lip, then export an STL or download a session JSON to share.
+      OneWall builds two families of printable parts, live, with no
+      account, no upload and no CAD. <strong>OneWall mode</strong> makes a
+      tapered container printed as a single continuous wall — one
+      perimeter, no seam, no infill. <strong>Gridfinity mode</strong> makes
+      standard 42&nbsp;mm-grid bins and the baseplates they drop into, and
+      cuts an oversized baseplate into tiles that actually fit the build
+      plate you own. Both modes export STL, STEP and 3MF, and both show
+      you the printer bed on screen before you commit four hours of
+      filament to a part that does not fit.
+    </p>
+    <p data-i18n="help.intro2">
+      The <code>Mode</code> dropdown at the top of the control panel
+      switches between them. The panel then shows only the folders that
+      belong to the active mode; the <code>Printer</code> folder stays
+      visible, because "will this come off my printer?" is a question
+      about both.
     </p>
 
-    <h3 data-i18n="help.sections_title">The three height sections</h3>
-    <p data-i18n="help.sections">
-      Every bin is divided into a LOW section (base transition), a MID
-      section (the main wall — vertical profile + texture) and a HIGH
-      section (the lip / rim). Each has its own controls.
+    <h3 data-i18n="help.ow_title">Mode 1 — OneWall: a container printed in one continuous wall</h3>
+    <p data-i18n="help.ow_intro">
+      A vase-mode print has one perimeter and no top, so it prints fast,
+      uses little plastic, and shows every millimetre of the surface you
+      designed. The shape is divided into three stacked sections. Set the
+      section heights first, then shape each one.
+    </p>
+    <table>
+      <tr><th>Section</th><th>What it does</th><th>Controls</th></tr>
+      <tr><td><strong>LOW</strong></td><td>Base → wall transition. Sets how the footprint grows out of the bottom.</td>
+          <td><code>Base scale</code> (0.86 = footprint 14% smaller than the body), <code>Low curve</code> (negative = concave undercut)</td></tr>
+      <tr><td><strong>MID</strong></td><td>The wall itself: vertical profile, surface texture, optional decorative wave.</td>
+          <td><code>Mid top scale</code>, <code>Profile</code> (linear / custom), <code>Amount</code>, plus the two texture folders</td></tr>
+      <tr><td><strong>HIGH</strong></td><td>The lip. The part your hand touches and the part that stacks.</td>
+          <td><code>Lip style</code>, <code>Lip scale</code>, <code>Peak / Top scale</code>, <code>Ribs</code></td></tr>
+    </table>
+    <table>
+      <tr><th>Folder</th><th>Parameter</th><th>Range / unit</th><th>Use it for</th></tr>
+      <tr><td>Outer Dimensions</td><td>Width, Depth, Height, Corner radius</td><td>mm</td>
+          <td>The bounding box. Start here — everything else is relative to it.</td></tr>
+      <tr><td>Section Heights</td><td>Low height, High height</td><td>mm</td>
+          <td>What is left over is the MID wall. Keep LOW ≥ 8 mm for a stable base.</td></tr>
+      <tr><td>Mid — Wall Texture</td><td>Texture, Amplitude, X / Z frequency, Fade</td><td>mm / count</td>
+          <td>Surface pattern. <code>Fade</code> blends the texture out near the base and lip so the transitions stay clean.</td></tr>
+      <tr><td>Mid — Decorative Wave</td><td>Amplitude, Lobes, Twist</td><td>mm / count / turns</td>
+          <td>A large slow modulation on top of the texture. Two frequencies read better than one.</td></tr>
+      <tr><td>Resolution</td><td>Point spacing, Mesh layer</td><td>mm</td>
+          <td>Lower = smoother mesh and a bigger file. 2.2 / 1.4 mm is the working default; drop it before the final export.</td></tr>
+    </table>
+
+    <h3 data-i18n="help.gf_title">Mode 2 — Gridfinity: bins and baseplates sized to your drawer, split to fit your printer</h3>
+    <p data-i18n="help.gf_intro">
+      Gridfinity is a 42&nbsp;mm modular grid: bins sit in baseplate
+      sockets and stack on each other. OneWall generates both parts from
+      the same math. The <code>Part</code> dropdown picks which one; the
+      <code>Style</code> dropdown picks how it will be sliced —
+      <code>normal</code> gives walls and a floor for ordinary slicing,
+      <code>lite</code> gives a solid body for spiral vase mode.
+    </p>
+    <table>
+      <tr><th>Bin control</th><th>Range</th><th>What it means</th></tr>
+      <tr><td>Width / Depth (units)</td><td>0.5 – 8, in 0.5 steps</td><td>1 unit = 42 mm. Half units are allowed, so a 1.5 × 3 bin is legal.</td></tr>
+      <tr><td>Height (7 mm units)</td><td>1 – 12</td><td>1 unit = 7 mm. Height 3 = 21 mm, the classic shallow tray.</td></tr>
+      <tr><td>Leg size (×42 mm)</td><td>0.5 / 1 / 2</td><td>The foot pitch. It must divide the bin on both axes — a blocked combination snaps to the largest leg that fits.</td></tr>
+      <tr><td>Stacking lip</td><td>on / off</td><td>Off saves 4.4 mm of height when the bin will never be stacked.</td></tr>
+      <tr><td>Dividers X / Y</td><td>0 – 8</td><td>Internal walls. 2 dividers make 3 compartments.</td></tr>
+      <tr><td>Wall (mm)</td><td>0.8 – 3</td><td>Normal style only. 1.2 mm = 3 perimeters at a 0.4 mm nozzle.</td></tr>
+      <tr><td>Spiral ribs / depth / twist</td><td>0 – 48 / 0 – 1.5 mm / ±6</td><td>Surface texture on the outside wall. Ribs also stiffen a thin-walled bin.</td></tr>
+    </table>
+    <table>
+      <tr><th>Baseplate control</th><th>Range</th><th>What it means</th></tr>
+      <tr><td>Cells X / Y</td><td>0.5 – 8, in 0.05 steps</td><td>Fractional counts are deliberate: measure the drawer, not the grid. A leftover big enough for a bin becomes a smaller socket; a thinner sliver becomes a solid filler strip.</td></tr>
+      <tr><td>Cell size (×42 mm)</td><td>0.5 / 1 / 2 / 4</td><td>Socket pitch. Match it to the leg size of the bins you print.</td></tr>
+      <tr><td>Corner radius</td><td>1 – 8 mm</td><td>Outer corners of the plate.</td></tr>
+      <tr><td>Split to fit printer</td><td>on / off</td><td>Cuts an oversized plate into tiles that fit the selected build plate. Cuts land on cell boundaries only — a split socket would hold nothing. The tiles butt back together seamlessly in the drawer.</td></tr>
+      <tr><td>Arrangement</td><td>assembled / packed</td><td><code>assembled</code> answers "what will my drawer look like". <code>packed</code> lays the tiles onto build plates and answers the expensive question: how many prints is this?</td></tr>
+      <tr><td>Part spacing (mm)</td><td>0 – 20</td><td>Gap between packed parts on the bed.</td></tr>
+    </table>
+
+    <h3 data-i18n="help.printer_title">Printer — check the fit before you press print, not after</h3>
+    <p data-i18n="help.printer">
+      Pick your machine under <code>Printer → Build plate</code> and the
+      bed is drawn under the model to scale. <code>Edge margin</code>
+      keeps parts away from clips and the purge line;
+      <code>Show plate on canvas</code> hides the bed once you are done
+      checking. Your printer missing from the list? <code>Add printer…</code>
+      takes a name and a width × depth in mm and remembers it in this
+      browser for next time.
     </p>
 
-    <h3 data-i18n="help.placeholder_title">Full parameter reference</h3>
-    <p class="placeholder" data-i18n="help.placeholder">
-      Coming in the next update: hover-tooltips on every slider and a
-      complete table of every parameter with units, ranges and tips.
-    </p>
+    <h3 data-i18n="help.slicer_title">Slicer settings that decide whether the print works</h3>
+    <table>
+      <tr><th>Printing</th><th>Set this</th></tr>
+      <tr><td>OneWall bin, or Gridfinity <code>lite</code></td>
+          <td>Spiral vase mode <strong>on</strong>, bottom layers ≥ 2, 0 top layers, 1 perimeter. Layer height 0.2 mm.</td></tr>
+      <tr><td>Gridfinity <code>normal</code> bin or baseplate</td>
+          <td>Spiral vase mode <strong>off</strong>, 3 perimeters, 4 bottom / 4 top layers, 10–15% infill. No supports needed.</td></tr>
+      <tr><td>Any part with the bottom signature</td>
+          <td>Bottom shell layers ≥ 2 (3 recommended). The engraving is one layer deep; with a single bottom layer it punches through the floor.</td></tr>
+    </table>
+
+    <h3 data-i18n="help.export_title">Four ways out</h3>
+    <table>
+      <tr><th>File</th><th>Take it when</th></tr>
+      <tr><td><code>STL (engraved)</code></td><td>You are going straight to a slicer. The signature is subtracted as real geometry, so the result stays a single solid and vase mode still works.</td></tr>
+      <tr><td><code>STEP (faceted)</code></td><td>You want the part in CAD — Fusion, FreeCAD, SolidWorks.</td></tr>
+      <tr><td><code>3MF (mm, multi-part)</code></td><td>You packed baseplate tiles onto build plates. One object per tile, millimetre-native, arrangement preserved.</td></tr>
+      <tr><td><code>Session (JSON)</code></td><td>You want this exact design back later, or want to send every slider to someone else in one small file.</td></tr>
+    </table>
   </div>
 </dialog>
 
@@ -331,6 +421,13 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <p>
       Software architect and engineering leader from Israel.
       I build backend systems by day, parametric prints by night.
+    </p>
+    <p>
+      OneWall started as one vase-mode bin and grew a second half: a
+      Gridfinity creator for 42&nbsp;mm-grid bins and baseplates, with
+      the build plate drawn under the model and oversized plates split
+      into tiles that fit it. Both modes live in this one page. See
+      <strong>Help</strong> for the full manual.
     </p>
 
     <h3>Links</h3>
