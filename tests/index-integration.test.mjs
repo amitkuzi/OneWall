@@ -30,7 +30,7 @@ ok(syntaxOK, 'inline module script parses as valid JS' +
 // 2. wiring
 ok(/from '\.\/assets\/gridfinity\.js'/.test(js), 'imports ./assets/gridfinity.js');
 ok(/const MODE = \{ mode: 'onewall' \}/.test(js), 'MODE state defaults to onewall');
-ok(/gui\.add\(MODE, 'mode', \['onewall', 'gridfinity'\]\)/.test(js), 'mode dropdown in GUI');
+ok(/gui\.add\(MODE, 'mode', MODE_TABS\.map/.test(js) && /id: 'gridfinity'/.test(js), 'mode controller bound to MODE_TABS');
 ok(/function applyMode\(\)/.test(js), 'applyMode() defined');
 ok(/fGf\.hide\(\)/.test(js), 'gridfinity folder hidden on load');
 ok(/buildGridfinityParts/.test(js) &&
