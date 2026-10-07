@@ -112,6 +112,16 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     font-size: 10px; color: var(--muted); margin-left: 6px;
     padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px;
   }
+  /* ── Mode tabs — one per mode; add an entry to MODE_TABS to add more ── */
+  #mode-tabs { display: flex; gap: 2px; align-self: stretch; align-items: flex-end; }
+  #mode-tabs a {
+    text-decoration: none; background: transparent; color: var(--muted); border: none;
+    border-bottom: 2px solid transparent; padding: 6px 14px 8px;
+    font-size: 13px; font-family: inherit; cursor: pointer;
+  }
+  #mode-tabs a:hover { color: var(--fg); }
+  #mode-tabs a[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+  @media (max-width: 900px) { #brand .tagline, #brand .ver { display: none; } }
   #header nav { display: flex; gap: 6px; align-items: center; }
   #header button.nav, #header a.nav {
     background: transparent; color: var(--fg);
@@ -309,10 +319,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Containers &amp; Gridfinity Bins / Baseplates</span>
-    <span class="ver">v0.1-0825-091200</span>
+    <span class="ver">v0.1-1007-140733</span>
   </div>
+  <div id="mode-tabs" role="tablist" aria-label="Mode"></div>
   <nav>
-    <button class="nav" id="btn-help"  data-i18n="nav.help">Help</button>
+    <button class="nav" id="btn-help" data-i18n="nav.help">Help</button>
     <button class="nav" id="btn-about" data-i18n="nav.about">About</button>
     <a class="nav" href="about.html">Docs</a>
     <button class="nav lang" id="btn-lang" title="Switch language">EN</button>
@@ -403,6 +414,24 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <tr><td>Split to fit printer</td><td>on / off</td><td>Cuts an oversized plate into tiles that fit the selected build plate. Cuts land on cell boundaries only — a split socket would hold nothing. The tiles butt back together seamlessly in the drawer.</td></tr>
       <tr><td>Arrangement</td><td>assembled / packed</td><td><code>assembled</code> answers "what will my drawer look like". <code>packed</code> lays the tiles onto build plates and answers the expensive question: how many prints is this?</td></tr>
       <tr><td>Part spacing (mm)</td><td>0 – 20</td><td>Gap between packed parts on the bed.</td></tr>
+    </table>
+
+    <h3 data-i18n="help.by_title">Mode 3 — Bayonet: a twist-or-slide connector with embedded magnets</h3>
+    <p data-i18n="help.by_intro">
+      Joins two parts without screws. <strong>Round</strong> connectors twist
+      to lock, <strong>rectangular</strong> ones slide. The hooks carry the
+      load; the magnets only keep the teeth together. Every "0 = auto" value
+      is computed from the object size and the magnet, and the
+      <code>Calculated</code> folder shows what was picked.
+    </p>
+    <table>
+      <tr><th>Setting</th><th>What it does</th></tr>
+      <tr><td>Kind</td><td><em>Twin</em>: two identical halves (print the same part twice; the second is the first flipped, so its teeth are the mirror image). <em>Male + female</em>: a plug with pins and a socket with L-slots.</td></tr>
+      <tr><td>Size means</td><td>Outer size of the part, or the inner opening it must clear. Round takes a diameter; rectangular takes width × depth and the axis it slides along.</td></tr>
+      <tr><td>Magnets</td><td>Disc diameter and thickness. The pocket is oversize so the magnet drops in after the print, with small crush ribs that bite into it so it can be pressed in and held. Fit the pair with opposite poles facing: foot-tip magnets N out (red), post-face magnets S out (blue).</td></tr>
+      <tr><td>Teeth, width, strength</td><td>Leave at 0 for auto. Override the count, the tooth width, the tooth thickness (strength), the base and the ring wall when you know better. Too many teeth or too thin a tooth raises a warning.</td></tr>
+      <tr><td>Sleeve</td><td>Adds a tube behind the connector so it can be glued or printed onto an object.</td></tr>
+      <tr><td>Preview</td><td>Assembled shows both halves with an engage slider; Print layout shows exactly what the STL / STEP / 3MF contains.</td></tr>
     </table>
 
     <h3 data-i18n="help.printer_title">Printer — check the fit before you press print, not after</h3>
@@ -643,7 +672,11 @@ import { mergeVertices }  from 'three/addons/utils/BufferGeometryUtils.js';
 import GUI                from 'lil-gui';
 // CSG library — used at STL export time to subtract the signature
 // from the bin (true engraving, single solid, vase-mode compatible).
-import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
+import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
+// Bayonet Designer — sizing + geometry module (also unit-tested in Node)
+import { BAYONET_DEFAULTS, GEOMETRY_KEYS as BAYONET_KEYS,
+         buildBayonet, magnetCount }
+  from './assets/bayonet.js';
 // Gridfinity Creator — shared math module (also unit-tested in Node)
 import { buildBin as gfBuildBin, buildBaseplate as gfBuildPlate,
          planPlateTiles as gfPlanTiles, packBuildPlates as gfPackPlates,
@@ -676,6 +709,10 @@ const P = {
   lip_scale: 1.02, high_curve: 0.1,
   lip_peak_scale: 1.18, lip_top_scale: 1.04,
   lip_ribs: 4, lip_rib_amp: 0.9,
+  // Stackable: top becomes a socket congruent with this bin's own base
+  // taper (mirrored, +0.2 mm radial gap) so units nest onto each other.
+  // Overrides every other High — Lip param while on.
+  stackable: false,
   // Resolution
   point_spacing: 2.2, mesh_layer: 1.4,
   // Signature engraving (bottom of bin) — depth = 1 layer (0.2 mm) by default
@@ -708,6 +745,17 @@ const GP = {
   // arranged onto build plates, which is what you slice
   layout: 'assembled',
 };
+
+// ── Bayonet Designer state ──────────────────────────────────
+// BP mirrors BAYONET_DEFAULTS (sizing + geometry). BV only moves the
+// preview — it never rebuilds the solid.
+const BP = { ...BAYONET_DEFAULTS };
+const BV = { view: 'assembled', engage: 1, magnets: true, ghost: true,
+             thick: false, minWall: 0.8 };
+// What the "Calculated" folder shows beside each override.
+const BPC = { teeth: '', tooth_w: '', tooth_t: '', foot: '', stack: '',
+              travel: '', magnets: '', pocket: '', collide: 'not run yet',
+              walls: 'not run yet', strength: '', note: '' };
 
 // ── Printer / build plate ───────────────────────────────────
 // Not gridfinity-specific: "will this come off my printer?" is a
@@ -852,17 +900,34 @@ function buildGeometry() {
   };
 
   const lip_rib_offset = z => {
-    if (P.lip_style !== 'ribbed' || P.lip_ribs <= 0) return 0;
+    if (P.stackable || P.lip_style !== 'ribbed' || P.lip_ribs <= 0) return 0;
     if (z < P.height - P.high_h) return 0;
     const u = (z - (P.height - P.high_h)) / P.high_h;
     return P.lip_rib_amp * Math.cos(2 * Math.PI * P.lip_ribs * u);
   };
 
+  // Base taper as a pure function of height above the floor, so the
+  // stackable socket can mirror it exactly (see below).
+  const baseScaleAt = zprime =>
+    lerp(P.base_scale, 1, ease(clampf(zprime, 0, P.low_h) / P.low_h, P.low_curve));
+
+  const STACK_GAP = 0.2; // mm, radial — clearance so a second unit drops in freely
+  const stackSocketDepth = () => Math.min(P.low_h, P.high_h);
+
   const sectionScale = z => {
     if (z <= P.low_h)
-      return lerp(P.base_scale, 1, ease(z / P.low_h, P.low_curve));
-    if (z >= P.height - P.high_h)
+      return baseScaleAt(z);
+    if (z >= P.height - P.high_h) {
+      if (P.stackable) {
+        const Hs = stackSocketDepth();
+        if (z >= P.height - Hs) {
+          const w = P.height - z; // 0 at the very top rim … Hs at socket bottom
+          return baseScaleAt(Hs - w); // mirrors the base taper
+        }
+        return 1; // plain wall above the socket, if high_h > low_h
+      }
       return high_lip_scale((z - (P.height - P.high_h)) / P.high_h);
+    }
     return lerp(1, P.mid_top_scale, (z - P.low_h) / mid_h);
   };
 
@@ -923,11 +988,13 @@ function buildGeometry() {
 
   const modul = (s, z) => {
     const tz = z / P.height, fz = fade(z);
+    const stackGap = (P.stackable && z >= P.height - P.high_h) ? STACK_GAP : 0;
     return vprofileOffset(z)
       + fz * P.tex_amp * tex(s, tz)
       + fz * P.wave_amp * Math.cos(2 * Math.PI * P.wave_lobes * s
                                    + P.wave_twist * D2R * tz)
-      + lip_rib_offset(z);
+      + lip_rib_offset(z)
+      + stackGap;
   };
 
   // Layered point cloud
@@ -1206,6 +1273,432 @@ function buildGridfinityParts() {
   return { parts, plan, bp, beds: [{ x: 0, y: 0, w: bp.w, d: bp.d }] };
 }
 
+// ════════════════════════════════════════════════════════════
+//  BAYONET DESIGNER
+// ════════════════════════════════════════════════════════════
+// bayonet.js returns closed pieces (body, teeth, cutters). They are
+// unioned/cut here with three-bvh-csg — once per distinct
+// configuration; moving the engage slider or switching view reuses
+// the cached solids.
+function bayGeom(m) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(Float32Array.from(m.p), 3));
+  g.setIndex(m.i);
+  g.computeVertexNormals();
+  return g;
+}
+function bayBrush(m) {
+  const b = new Brush(bayGeom(m));
+  b.updateMatrixWorld();
+  return b;
+}
+
+function solidifyBayonetPart(part) {
+  const ev = new Evaluator();
+  ev.useGroups  = false;
+  ev.attributes = ['position', 'normal'];
+  let cur = bayBrush(part.body);
+  if (part.add) cur = ev.evaluate(cur, bayBrush(part.add), ADDITION);
+  for (const cut of part.cuts) {
+    cur.updateMatrixWorld();
+    cur = ev.evaluate(cur, bayBrush(cut), SUBTRACTION);
+  }
+  let g = cur.geometry;
+  if (g.index) g = g.toNonIndexed();   // flat facets — no smoothing over the sharp edges
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  return g;
+}
+
+let bayCache = null;   // { key, built: { plan, parts: [{ …part, geom }] } }
+function getBayonet() {
+  const key = JSON.stringify(BAYONET_KEYS.map(k => BP[k]));
+  if (bayCache && bayCache.key === key) return bayCache.built;
+  const { plan, parts } = buildBayonet(BP);
+  const solid = parts.map(p => ({ ...p, geom: solidifyBayonetPart(p) }));
+  if (bayCache) bayCache.built.parts.forEach(p => p.geom.dispose());
+  bayCache = { key, built: { plan, parts: solid } };
+  return bayCache.built;
+}
+
+const BAY_GAP = 12;   // mm between parts on the print layout
+
+// The parts as they go on the bed: flat, side by side, baked into
+// world coordinates. Exports use exactly this. A twin connector
+// prints the SAME half twice.
+function bayPartGeom(part, thick) {
+  return thick && part.geomThick ? part.geomThick : part.geom;
+}
+
+function bayPrintParts(built, thick = false) {
+  const { plan, parts } = built;
+  const list = plan.kind === 'malefemale'
+    ? parts.map(p => ({ name: p.name, geom: bayPartGeom(p, thick) }))
+    : [{ name: 'half_1', geom: bayPartGeom(parts[0], thick) },
+       { name: 'half_2', geom: bayPartGeom(parts[0], thick) }];
+  const alongY = !plan.round && BP.slide_axis === 'y';
+  const out = list.map(p => {
+    const g = p.geom.clone();
+    if (alongY) g.rotateZ(Math.PI / 2);
+    g.computeBoundingBox();
+    const b = g.boundingBox;
+    g.translate(-(b.min.x + b.max.x) / 2, -(b.min.y + b.max.y) / 2, -b.min.z);
+    g.computeBoundingBox();
+    return { name: p.name, geom: g };
+  });
+  const widths = out.map(p => p.geom.boundingBox.max.x - p.geom.boundingBox.min.x);
+  const total = widths.reduce((s, w) => s + w, 0) + BAY_GAP * (out.length - 1);
+  let x = -total / 2;
+  out.forEach((p, k) => {
+    p.geom.translate(x + widths[k] / 2, 0, 0);
+    p.geom.computeBoundingBox();
+    x += widths[k] + BAY_GAP;
+  });
+  const depth = Math.max(...out.map(p => p.geom.boundingBox.max.y - p.geom.boundingBox.min.y));
+  return { parts: out, width: total, depth };
+}
+
+const bayEase = x => x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+const MAG_COLOR = { N: 0xe04646, S: 0x3f7be0 };
+
+function bayMagnetMesh(m) {
+  const g = new THREE.CylinderGeometry(m.r, m.r, m.len, 24);
+  const mesh = new THREE.Mesh(g,
+    new THREE.MeshStandardMaterial({ color: MAG_COLOR[m.pole], roughness: 0.4, metalness: 0.5 }));
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(...m.ax));
+  mesh.position.set(...m.c);
+  return mesh;
+}
+
+// Where the upper half is at engage t: lifted clear, dropped in, then
+// twisted/slid to the lock. beta is signed along the travel direction.
+function bayPose(plan, t) {
+  const lift = 40 * (1 - bayEase(Math.min(t / 0.5, 1)));
+  const k = bayEase(Math.max((t - 0.5) / 0.5, 0));
+  return { lift, beta: plan.dir * (plan.beta0 + (plan.beta1 - plan.beta0) * k) };
+}
+function bayUpperMatrix(plan, t) {
+  const { lift, beta } = bayPose(plan, t);
+  const flip = new THREE.Matrix4();
+  if (plan.round) flip.makeRotationX(Math.PI); else flip.makeRotationY(Math.PI);
+  const m = new THREE.Matrix4().makeTranslation(plan.round ? 0 : beta, 0, plan.zFlip + lift);
+  if (plan.round) m.multiply(new THREE.Matrix4().makeRotationZ(beta / plan.rRef));
+  return m.multiply(flip);
+}
+
+// Both halves in place. The upper one is the lower one flipped (twin)
+// or the plug flipped (male/female); `engage` 0 → apart, 1 → locked.
+function bayAssembled(built) {
+  const { plan, parts } = built;
+  const lowerPart = plan.kind === 'malefemale' ? parts[1] : parts[0];
+  const upperPart = parts[0];
+  const thick = BV.thick && upperPart.geomThick;
+  const mat = side => {
+    if (thick) {
+      return new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65,
+        metalness: 0.05, side: THREE.DoubleSide });
+    }
+    const m = material.clone();
+    m.transparent = BV.ghost;
+    m.opacity = BV.ghost ? 0.5 : 1;
+    m.depthWrite = !BV.ghost;
+    if (side) m.color.offsetHSL(0.07, 0.05, 0.06);
+    return m;
+  };
+  const addPart = (part, parent, m) => {
+    parent.add(new THREE.Mesh(bayPartGeom(part, thick).clone(), m));
+    if (BV.magnets) for (const mg of part.magnets) parent.add(bayMagnetMesh(mg));
+  };
+  const root = new THREE.Group();
+  const lower = new THREE.Group();
+  addPart(lowerPart, lower, mat(false));
+  const flip = new THREE.Group();
+  flip.rotation[plan.round ? 'x' : 'y'] = Math.PI;
+  addPart(upperPart, flip, mat(true));
+  const pivot = new THREE.Group();
+  pivot.add(flip);
+
+  const { lift, beta } = bayPose(plan, BV.engage);
+  pivot.position.z = plan.zFlip + lift;
+  if (plan.round) pivot.rotation.z = beta / plan.rRef;
+  else pivot.position.x = beta;
+
+  root.add(lower, pivot);
+  if (!plan.round && BP.slide_axis === 'y') root.rotation.z = Math.PI / 2;
+  root.position.z = plan.T;                  // lower base sits on the bed
+  return root;
+}
+
+let bayRoot = null;
+let bayFramed = false;
+function frameBayonet(plan) {
+  const r = Math.max(plan.ro, plan.hx || 0, 20);
+  controls.target.set(0, 0, plan.stack * 0.35);
+  camera.position.set(r * 3.3, -r * 3.9, r * 2.7);
+  controls.update();
+}
+
+function rebuildBayonet() {
+  const built = getBayonet();
+  const { plan } = built;
+  const layout = bayPrintParts(built, BV.thick);
+  // a thickness map needs the analysis solids; build them on demand
+  if (BV.thick && !built.parts[0].geomThick) bayBuildThickness(bayCache.key);
+
+  if (BV.view === 'print') {
+    bayRoot = new THREE.Group();
+    const thickMat = BV.thick && built.parts[0].geomThick
+      ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65,
+          metalness: 0.05, side: THREE.DoubleSide }) : null;
+    for (const p of layout.parts) {
+      const m = new THREE.Mesh(p.geom, thickMat || material);
+      m.name = p.name;
+      bayRoot.add(m);
+    }
+  } else {
+    layout.parts.forEach(p => p.geom.dispose());
+    bayRoot = bayAssembled(built);
+    const red = bayCollisionGeom();
+    if (red) {
+      const rm = new THREE.Mesh(red.clone(), new THREE.MeshBasicMaterial({
+        color: 0xff2a2a, transparent: true, opacity: 0.85, depthTest: false }));
+      rm.renderOrder = 10;
+      bayRoot.add(rm);
+    }
+  }
+  printGroup.add(bayRoot);
+  if (!bayFramed) { frameBayonet(plan); bayFramed = true; }
+
+  const mc = magnetCount(plan);
+  const deg = plan.round
+    ? ` · twist ${(Math.abs(plan.beta0 - plan.beta1) / plan.rRef * 180 / Math.PI).toFixed(0)}°`
+    : ` · slide ${Math.abs(plan.beta0 - plan.beta1).toFixed(1)} mm`;
+  const unit = plan.kind === 'malefemale' ? 'pin' : 'tooth';
+  let note = `${plan.N} ${plan.N === 1 ? unit : unit === 'pin' ? 'pins' : 'teeth'}`
+           + (plan.round ? '' : ' per side')
+           + ` · ${mc.total} magnets ⌀${plan.magnet.d}×${plan.magnet.h}`
+           + ` · locked height ${plan.stack.toFixed(1)} mm` + deg
+           + ` · print layout ${layout.width.toFixed(0)}×${layout.depth.toFixed(0)} mm`;
+  const bp = currentPlate();
+  if (layout.width > bp.w - 2 * PRINTER.margin || layout.depth > bp.d - 2 * PRINTER.margin)
+    note += `  ⚠ print layout is wider than the usable bed of ${bp.name}`;
+  for (const w of plan.warnings) note += `  ⚠ ${w}`;
+  refreshBayonetCalc(plan, mc);
+  scheduleAutoValidate();
+  const tris = built.parts.reduce((n, p) => n + p.geom.attributes.position.count / 3, 0);
+  return { plan, note, bed: bp, tris: tris * (plan.kind === 'malefemale' ? 1 : 2) };
+}
+
+let bayCalcCtrls = [];
+function refreshBayonetCalc(plan, mc) {
+  const f1 = v => (+v).toFixed(1);
+  BPC.teeth   = `${plan.N} ${plan.kind === 'malefemale' ? 'pins' : 'teeth'}`
+              + (BP.teeth > 0 ? ` (auto would be ${plan.Nauto})` : ' (auto)');
+  BPC.tooth_w = `${f1(plan.w)} mm` + (BP.tooth_w > 0 ? ` (auto ${f1(plan.w_auto)})` : ' (auto)');
+  BPC.tooth_t = `${f1(plan.toothT)} mm` + (BP.tooth_t > 0 ? ` (auto ${f1(plan.toothT_auto)})` : ' (auto)');
+  BPC.foot    = `${f1(plan.F)} tall` + (plan.kind === 'twin' ? ` × ${f1(plan.e)} reach` : '');
+  BPC.stack   = `${f1(plan.stack)} mm locked`;
+  BPC.travel  = plan.round
+    ? `${(Math.abs(plan.beta0 - plan.beta1) / plan.rRef * 180 / Math.PI).toFixed(0)}° twist`
+    : `${f1(Math.abs(plan.beta0 - plan.beta1))} mm slide`;
+  BPC.magnets = `${mc.total} × ⌀${plan.magnet.d}×${plan.magnet.h} mm`;
+  BPC.pocket  = `⌀${f1(plan.pocketD)}` + (plan.ribs
+    ? ` + ${plan.ribs} crush ribs` : ', plain') + ` × ${f1(plan.Dp)} deep`;
+  const lv = l => plan.strength.filter(k => k.level === l).length;
+  BPC.strength = plan.strength.length + ' checks: ' + lv('ok') + ' ok, ' + lv('warn')
+    + ' amber, ' + lv('weak') + ' weak' + (lv('weak') || lv('warn')
+      ? ' — ' + plan.strength.filter(k => k.level !== 'ok')
+          .map(k => k.label + ' ' + k.value.toFixed(1) + k.unit.trim()).join('; ') : '');
+  BPC.note    = plan.warnings.length ? plan.warnings[0] : 'ok';
+  bayCalcCtrls.forEach(c => c.updateDisplay());
+}
+
+// ── Validation: collisions while engaging, weak points ──────
+// Both run on the finished solids. Collisions: the two halves are
+// intersected (three-bvh-csg) at every step of the drop-in and
+// twist/slide; any real overlap is drawn in red at the pose where it is
+// worst. Weak points: a thickness map — a ray from every face straight
+// into the plastic, measuring how far to the other side.
+const COLLIDE_OK = 6;        // mm³ — less than this is two faces touching (tessellation noise)
+let bayVal = null;           // { key, worst: { t, vol, geom } | null, ok }
+let bayLive = null;          // red overlay geometry for the step being animated
+let bayRun = 0;              // newest run wins; older ones stop
+let bayAutoTimer = null;
+
+function geomVolume(g) {
+  if (g.index) g = g.toNonIndexed();
+  const p = g.attributes.position.array;
+  let v = 0;
+  for (let i = 0; i < p.length; i += 9)
+    v += (p[i] * (p[i + 4] * p[i + 8] - p[i + 5] * p[i + 7])
+        - p[i + 1] * (p[i + 3] * p[i + 8] - p[i + 5] * p[i + 6])
+        + p[i + 2] * (p[i + 3] * p[i + 7] - p[i + 4] * p[i + 6])) / 6;
+  return Math.abs(v);
+}
+
+// the red geometry to draw right now, if any
+function bayCollisionGeom() {
+  if (bayLive) return bayLive;
+  const w = bayVal && bayCache && bayVal.key === bayCache.key ? bayVal.worst : null;
+  return w && Math.abs(BV.engage - w.t) < 0.02 ? w.geom : null;
+}
+
+const nextFrame = () => new Promise(r => requestAnimationFrame(r));
+
+// animate = true: play the engagement on screen while checking.
+// animate = false: silent background check after an edit.
+async function validateEngagement(animate = true) {
+  const run = ++bayRun;
+  const built = getBayonet();
+  const key = bayCache.key;
+  const { plan, parts } = built;
+  const lower = plan.kind === 'malefemale' ? parts[1] : parts[0];
+  const ev = new Evaluator();
+  ev.useGroups = false;
+  ev.attributes = ['position', 'normal'];
+  const lo = new Brush(lower.geom.clone());
+  lo.updateMatrixWorld();
+
+  if (animate && BV.view !== 'assembled') { BV.view = 'assembled'; syncBayonetGui(); }
+  const STEPS = 26;
+  let worst = null;
+  const hits = [];
+  bayLive = null;
+  for (let i = 0; i <= STEPS; i++) {
+    if (run !== bayRun) return;
+    const t = i / STEPS;
+    const up = new Brush(parts[0].geom.clone());
+    up.applyMatrix4(bayUpperMatrix(plan, t));
+    up.updateMatrixWorld();
+    const hit = ev.evaluate(lo, up, INTERSECTION).geometry;
+    const vol = geomVolume(hit);
+    if (vol > COLLIDE_OK) {
+      hits.push(t);
+      if (!worst || vol > worst.vol) worst = { t, vol, geom: hit.clone() };
+    }
+    BPC.collide = 'checking… ' + Math.round(100 * i / STEPS) + ' %';
+    bayCalcCtrls.forEach(c => c.updateDisplay());
+    if (animate) {
+      BV.engage = t;
+      bayLive = vol > COLLIDE_OK ? hit : null;
+      engageCtl.updateDisplay();
+      scheduleRebuild();
+    }
+    await nextFrame();
+  }
+  if (run !== bayRun) return;
+  bayLive = null;
+  bayVal = { key, worst, ok: hits.length === 0 };
+  BPC.collide = bayVal.ok
+    ? '✓ no collision in ' + (STEPS + 1) + ' engagement steps'
+    : '✗ collides at engage ' + hits[0].toFixed(2) + '–' + hits[hits.length - 1].toFixed(2)
+      + ' (worst ' + worst.vol.toFixed(0) + ' mm³)';
+  if (!bayVal.ok && animate) { BV.engage = worst.t; engageCtl.updateDisplay(); }
+  bayCalcCtrls.forEach(c => c.updateDisplay());
+  scheduleRebuild();
+}
+
+// Silent re-check once the user stops dragging sliders.
+function scheduleAutoValidate() {
+  clearTimeout(bayAutoTimer);
+  const key = bayCache && bayCache.key;
+  if (bayVal && bayVal.key === key) return;
+  BPC.collide = 'will re-check when you stop editing…';
+  bayAutoTimer = setTimeout(() => {
+    if (MODE.mode === 'bayonet') validateEngagement(false).catch(e => {
+      console.error('OneWall collision check failed:', e);
+      BPC.collide = '⚠ check failed: ' + e.message;
+      bayCalcCtrls.forEach(c => c.updateDisplay());
+    });
+  }, 900);
+}
+
+// Thickness map. The analysis solids are built WITHOUT the press-fit
+// ribs — they are sacrificial slivers by design and would read as weak.
+let bayThickBusy = false;
+async function bayBuildThickness(key) {
+  if (bayThickBusy) return;
+  bayThickBusy = true;
+  try {
+    const { parts } = buildBayonet({ ...BP, ribs: 0 });
+    const out = [];
+    let minT = Infinity, weakArea = 0, amberArea = 0;
+    for (let n = 0; n < parts.length; n++) {
+      const g = solidifyBayonetPart(parts[n]);
+      const r = await thicknessColors(g, n, parts.length);
+      if (!bayCache || bayCache.key !== key) return;
+      g.setAttribute('color', new THREE.BufferAttribute(r.colors, 3));
+      out.push(g);
+      minT = Math.min(minT, r.min);
+      weakArea += r.weakArea; amberArea += r.amberArea;
+    }
+    if (!bayCache || bayCache.key !== key) return;
+    bayCache.built.parts.forEach((p, i) => { p.geomThick = out[i]; });
+    // a few stray facets at edges are tessellation noise, not a weak tooth
+    BPC.walls = weakArea > 2
+      ? '✗ ' + weakArea.toFixed(1) + ' mm² thinner than ' + BV.minWall + ' mm (thinnest ' + minT.toFixed(2) + ' mm)'
+      : amberArea > 0
+        ? '⚠ no weak spot, but ' + amberArea.toFixed(1) + ' mm² under 1.0 mm (thinnest ' + minT.toFixed(2) + ' mm)'
+        : '✓ no weak points — thinnest wall ' + minT.toFixed(2) + ' mm';
+    bayCalcCtrls.forEach(c => c.updateDisplay());
+    scheduleRebuild();
+  } catch (err) {
+    console.error('OneWall thickness map failed:', err);
+    BPC.walls = '⚠ thickness map failed: ' + err.message;
+    bayCalcCtrls.forEach(c => c.updateDisplay());
+  } finally {
+    bayThickBusy = false;
+  }
+}
+
+async function thicknessColors(geom, partNo, nParts) {
+  const g = geom.index ? geom.toNonIndexed() : geom;
+  const pos = g.attributes.position.array;
+  const nTri = pos.length / 9;
+  const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  mesh.updateMatrixWorld(true);
+  const rc = new THREE.Raycaster();
+  rc.firstHitOnly = true;
+  const colors = new Float32Array(nTri * 9);
+  const base = new THREE.Color('#8794ad');
+  const amber = new THREE.Color('#ffb020'), red = new THREE.Color('#ff2a2a');
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const n = new THREE.Vector3(), o = new THREE.Vector3(), e1 = new THREE.Vector3();
+  let min = Infinity, weakArea = 0, amberArea = 0;
+  for (let t = 0; t < nTri; t++) {
+    a.fromArray(pos, t * 9); b.fromArray(pos, t * 9 + 3); c.fromArray(pos, t * 9 + 6);
+    // outward normal for counter-clockwise winding: (b - a) x (c - a)
+    n.crossVectors(e1.subVectors(b, a), o.subVectors(c, a));
+    const area = n.length() / 2;
+    let col = base;
+    if (area > 1e-6) {
+      n.normalize();
+      // −n points into the plastic: start just inside the face
+      o.copy(a).add(b).add(c).multiplyScalar(1 / 3).addScaledVector(n, -0.01);
+      rc.set(o, n.clone().negate());
+      const hit = rc.intersectObject(mesh, false)[0];
+      if (hit) {
+        const th = hit.distance + 0.01;
+        if (th < min) min = th;
+        if (th < BV.minWall) { col = red; weakArea += area; }
+        else if (th < 1.0) { col = amber; amberArea += area; }
+      }
+    }
+    for (let v = 0; v < 3; v++) {
+      colors[t * 9 + v * 3] = col.r;
+      colors[t * 9 + v * 3 + 1] = col.g;
+      colors[t * 9 + v * 3 + 2] = col.b;
+    }
+    if (t % 150 === 0) {
+      BPC.walls = 'measuring wall thickness… part ' + (partNo + 1) + '/' + nParts
+        + ' ' + Math.round(100 * t / nTri) + ' %';
+      bayCalcCtrls.forEach(c2 => c2.updateDisplay());
+      await nextFrame();
+    }
+  }
+  return { colors, min, weakArea, amberArea };
+}
+
 let lastPlan = null;   // tile plan behind the current preview, if any
 
 function rebuild() {
@@ -1213,6 +1706,14 @@ function rebuild() {
   for (const m of partMeshes) { printGroup.remove(m); m.geometry.dispose(); }
   partMeshes.length = 0;
   if (sigMesh) { printGroup.remove(sigMesh); sigMesh.geometry.dispose(); sigMesh = null; }
+  if (bayRoot) {
+    printGroup.remove(bayRoot);
+    bayRoot.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material && o.material !== material) o.material.dispose();
+    });
+    bayRoot = null;
+  }
 
   let verts = 0, tris = 0, size = '', note = '';
   lastPlan = null;
@@ -1254,6 +1755,16 @@ function rebuild() {
       const r = parts[0].res;
       size = `${r.width.toFixed(1)}×${r.depth.toFixed(1)}×${r.height.toFixed(1)} mm`;
     }
+  } else if (MODE.mode === 'bayonet') {
+    try {
+      const r = rebuildBayonet();
+      note = '  ' + r.note;
+      tris = r.tris; verts = r.tris * 3;
+      beds = [{ x: 0, y: 0, w: r.bed.w, d: r.bed.d }];
+    } catch (err) {
+      console.error('OneWall bayonet build failed:', err);
+      note = '  ⚠ bayonet build failed: ' + err.message;
+    }
   } else {
     const g = buildGeometry();
     binMesh = new THREE.Mesh(g.geom, material);
@@ -1285,9 +1796,11 @@ function updateSigBadge() {
   const badge = document.getElementById('sig-badge');
   const txt   = document.getElementById('sig-badge-text');
   const gf = MODE.mode === 'gridfinity';
-  const on = !gf && P.sig_enabled && P.sig_text && svaseFont;
+  const by = MODE.mode === 'bayonet';
+  const on = !gf && !by && P.sig_enabled && P.sig_text && svaseFont;
   badge.classList.toggle('off', !on);
-  txt.textContent = gf ? '(none — gridfinity)'
+  txt.textContent = by ? '(none — bayonet)'
+    : gf ? '(none — gridfinity)'
     : P.sig_enabled ? (P.sig_text || '(empty)')
     : '(disabled)';
 }
@@ -1366,9 +1879,33 @@ const scheduleRebuild = () => {
 };
 
 // — Mode switch: OneWall customizer ↔ Gridfinity creator —
-gui.add(MODE, 'mode', ['onewall', 'gridfinity'])
+// The header tabs (MODE_TABS) are the switcher; this dropdown stays as
+// a hidden controller so MODE.mode keeps its lil-gui binding.
+const MODE_TABS = [
+  { id: 'onewall',   label: 'OneWall' },
+  { id: 'gridfinity', label: 'Gridfinity' },
+  { id: 'bayonet',   label: 'Bayonet' },
+];
+const modeCtl = gui.add(MODE, 'mode', MODE_TABS.map(t => t.id))
    .name('Mode')
    .onChange(() => applyMode());
+modeCtl.hide();
+const tabsEl = document.getElementById('mode-tabs');
+MODE_TABS.forEach(t => {
+  const b = document.createElement('a');
+  b.role = 'tab'; b.dataset.mode = t.id; b.textContent = t.label;
+  b.href = '#' + t.id;          // direct link: index.html#gridfinity
+  tabsEl.appendChild(b);
+});
+// URL hash <-> mode. Clicking a tab changes the hash; the hash drives the mode.
+const modeFromHash = () => {
+  const id = location.hash.slice(1);
+  return MODE_TABS.some(t => t.id === id) ? id : null;
+};
+window.addEventListener('hashchange', () => {
+  const id = modeFromHash();
+  if (id && id !== MODE.mode) { MODE.mode = id; applyMode(); }
+});
 
 // — Printer / build plate — top level, applies to both modes —
 // Whether the thing on screen comes off the printer is a question
@@ -1447,15 +1984,24 @@ fWave.add(P, 'wave_lobes',   2,   24, 1  ).onChange(scheduleRebuild);
 fWave.add(P, 'wave_twist', -360, 360, 5  ).onChange(scheduleRebuild);
 
 const fLip = gui.addFolder('High — Lip / Top Rim');
-fLip.add(P, 'lip_style',
+const stackableCtrl = fLip.add(P, 'stackable')
+  .name('Stackable (self-fit lip)').onChange(v => {
+    lipParamCtrls.forEach(c => v ? c.disable() : c.enable());
+    scheduleRebuild();
+  });
+const lipStyleCtrl    = fLip.add(P, 'lip_style',
   ['smooth','rolled','flange','bead','ribbed']
 ).onChange(scheduleRebuild);
-fLip.add(P, 'lip_scale',      0.7, 1.4, 0.01).onChange(scheduleRebuild);
-fLip.add(P, 'high_curve',      -3,   3, 0.1 ).onChange(scheduleRebuild);
-fLip.add(P, 'lip_peak_scale', 0.9, 1.6, 0.01).onChange(scheduleRebuild);
-fLip.add(P, 'lip_top_scale',  0.7, 1.4, 0.01).onChange(scheduleRebuild);
-fLip.add(P, 'lip_ribs',         0,  12, 1   ).onChange(scheduleRebuild);
-fLip.add(P, 'lip_rib_amp',      0,   3, 0.05).onChange(scheduleRebuild);
+const lipParamCtrls = [
+  lipStyleCtrl,
+  fLip.add(P, 'lip_scale',      0.7, 1.4, 0.01).onChange(scheduleRebuild),
+  fLip.add(P, 'high_curve',      -3,   3, 0.1 ).onChange(scheduleRebuild),
+  fLip.add(P, 'lip_peak_scale', 0.9, 1.6, 0.01).onChange(scheduleRebuild),
+  fLip.add(P, 'lip_top_scale',  0.7, 1.4, 0.01).onChange(scheduleRebuild),
+  fLip.add(P, 'lip_ribs',         0,  12, 1   ).onChange(scheduleRebuild),
+  fLip.add(P, 'lip_rib_amp',      0,   3, 0.05).onChange(scheduleRebuild),
+];
+if (P.stackable) lipParamCtrls.forEach(c => c.disable());
 
 const fRes = gui.addFolder('Resolution');
 fRes.add(P, 'point_spacing', 0.8, 5,   0.1).onChange(scheduleRebuild);
@@ -1517,6 +2063,95 @@ fGfFit.add(GP, 'tile_gap', 0, 20, 1).name('Part spacing (mm)').onChange(schedule
 
 fGf.add(GP, 'corner_r', 1, 8, 0.5).name('Corner radius').onChange(scheduleRebuild);
 
+// — Bayonet Designer folder (hidden until Mode = bayonet) —
+// Every "0 = auto" slider is computed from the object size and the
+// magnet; the Calculated folder shows what was picked, so an override
+// can be judged against it.
+const fBy = gui.addFolder('Bayonet');
+fBy.add(BP, 'family', { 'Round — twist to lock': 'round', 'Rectangular — slide to lock': 'rect' })
+   .name('Type').onChange(() => { syncBayonetGui(); scheduleRebuild(); });
+fBy.add(BP, 'kind', { 'Twin — two identical halves': 'twin', 'Male + female': 'malefemale' })
+   .name('Kind').onChange(scheduleRebuild);
+fBy.add(BP, 'direction', {
+  'Right — clockwise / slide +X': 'right',
+  'Left — counter-clockwise / slide −X': 'left',
+}).name('Direction').onChange(scheduleRebuild);
+
+const fBySize = fBy.addFolder('Size');
+fBySize.add(BP, 'size_mode', {
+  'Outer size of the part': 'outer',
+  'Inner opening it must clear': 'inner',
+}).name('Size means').onChange(scheduleRebuild);
+const byDia = fBySize.add(BP, 'dia', 10, 300, 0.5).name('Diameter (mm)').onChange(scheduleRebuild);
+const byW   = fBySize.add(BP, 'size_w', 20, 300, 0.5).name('Width X (mm)').onChange(scheduleRebuild);
+const byD   = fBySize.add(BP, 'size_d', 20, 300, 0.5).name('Depth Y (mm)').onChange(scheduleRebuild);
+const byAx  = fBySize.add(BP, 'slide_axis', { 'Along width (X)': 'x', 'Along depth (Y)': 'y' })
+   .name('Slide direction axis').onChange(scheduleRebuild);
+
+const fByMag = fBy.addFolder('Magnets');
+fByMag.add(BP, 'magnet_d', 2, 20, 0.5).name('Diameter (mm)').onChange(scheduleRebuild);
+fByMag.add(BP, 'magnet_h', 1, 10, 0.5).name('Thickness (mm)').onChange(scheduleRebuild);
+fByMag.add(BP, 'fit', 0, 1, 0.05).name('Pocket oversize (mm)').onChange(scheduleRebuild);
+fByMag.add(BP, 'ribs', 0, 8, 1).name('Press-fit ribs (0 = none)').onChange(scheduleRebuild);
+fByMag.add(BP, 'crush', 0, 0.4, 0.01).name('Rib bite into magnet (mm)').onChange(scheduleRebuild);
+fByMag.add(BP, 'recess', 0, 1, 0.05).name('Sink below face (mm)').onChange(scheduleRebuild);
+fByMag.add(BP, 'wall', 0.8, 3, 0.1).name('Plastic around magnet').onChange(scheduleRebuild);
+
+const fByTeeth = fBy.addFolder('Teeth, width & strength (0 = auto)');
+fByTeeth.add(BP, 'teeth', 0, 8, 1).name('Teeth count').onChange(scheduleRebuild);
+fByTeeth.add(BP, 'tooth_w', 0, 30, 0.5).name('Tooth width (mm)').onChange(scheduleRebuild);
+fByTeeth.add(BP, 'tooth_t', 0, 20, 0.5).name('Strength: tooth thickness').onChange(scheduleRebuild);
+fByTeeth.add(BP, 'back_slope', -1, 20, 0.5).name('45° back ramp (-1 full, 0 off)').onChange(scheduleRebuild);
+fByTeeth.add(BP, 'fillet', 0, 3, 0.1).name('Corner fillet radius (0 = sharp)').onChange(scheduleRebuild);
+fByTeeth.add(BP, 'chamfer', 0, 3, 0.1).name('Ring bottom chamfer (0 = none)').onChange(scheduleRebuild);
+fByTeeth.add(BP, 'base_t', 0, 15, 0.5).name('Base plate thickness').onChange(scheduleRebuild);
+fByTeeth.add(BP, 'ring_t', 0, 20, 0.5).name('Ring / frame wall').onChange(scheduleRebuild);
+fByTeeth.add(BP, 'clearance', 0, 0.6, 0.05).name('Print clearance (mm)').onChange(scheduleRebuild);
+
+const fByBody = fBy.addFolder('Body');
+fByBody.add(BP, 'sleeve').name('Add sleeve to join an object').onChange(scheduleRebuild);
+fByBody.add(BP, 'sleeve_len', 4, 60, 1).name('Sleeve length (mm)').onChange(scheduleRebuild);
+
+const fByView = fBy.addFolder('Preview');
+fByView.add(BV, 'view', {
+  'Assembled — drag the slider': 'assembled',
+  'Print layout (what is exported)': 'print',
+}).name('Show').onChange(() => { syncBayonetGui(); scheduleRebuild(); });
+const engageCtl = fByView.add(BV, 'engage', 0, 1, 0.005).name('Engage  (0 apart → 1 locked)')
+   .onChange(scheduleRebuild);
+const byEngage = engageCtl;
+const byGhost = fByView.add(BV, 'ghost').name('See-through').onChange(scheduleRebuild);
+const byMags  = fByView.add(BV, 'magnets').name('Show magnets (N red / S blue)').onChange(scheduleRebuild);
+
+const fByVal = fBy.addFolder('Validate');
+fByVal.add({ run: () => validateEngagement(true) }, 'run').name('▶ Play engagement + check collisions');
+fByVal.add(BV, 'thick').name('Wall-thickness map (red = weak)').onChange(() => {
+  if (BV.thick) BPC.walls = 'measuring…';
+  scheduleRebuild();
+});
+fByVal.add(BV, 'minWall', 0.4, 2, 0.05).name('Weak below (mm)').onChange(() => {
+  // thresholds changed: drop the cached map and measure again
+  if (bayCache) bayCache.built.parts.forEach(p => { delete p.geomThick; });
+  scheduleRebuild();
+});
+
+const fByCalc = fBy.addFolder('Calculated');
+for (const [k, label] of [['teeth', 'Teeth'], ['tooth_w', 'Tooth width'],
+    ['tooth_t', 'Strength'], ['foot', 'Foot'], ['stack', 'Height'],
+    ['travel', 'Travel'], ['magnets', 'Magnets'], ['pocket', 'Pocket'],
+    ['strength', 'Strength'], ['collide', 'Engagement'], ['walls', 'Wall thickness'],
+    ['note', 'Check']])
+  bayCalcCtrls.push(fByCalc.add(BPC, k).name(label).disable());
+
+function syncBayonetGui() {
+  const round = BP.family === 'round';
+  round ? byDia.show() : byDia.hide();
+  for (const c of [byW, byD, byAx]) round ? c.hide() : c.show();
+  const asm = BV.view === 'assembled';
+  for (const c of [byEngage, byGhost, byMags]) asm ? c.show() : c.hide();
+}
+syncBayonetGui();
+
 // ── Add-printer dialog ──────────────────────────────────────
 const plateDialog = document.getElementById('modal-plate');
 const plateForm   = document.getElementById('plate-form');
@@ -1557,16 +2192,28 @@ plateForm.addEventListener('submit', ev => {
   window.owTrack && owTrack('build_plate_add', { w, d });
 });
 
+let expStlCtl = null;   // the STL button — its label depends on the mode
+
 // Show only the folders relevant to the active mode.
 const ONEWALL_FOLDERS = [fOuter, fSec, fLow, fMid, fTex, fWave, fLip, fRes];
 function applyMode() {
   const gf = MODE.mode === 'gridfinity';
-  ONEWALL_FOLDERS.forEach(f => gf ? f.hide() : f.show());
+  const by = MODE.mode === 'bayonet';
+  ONEWALL_FOLDERS.forEach(f => (gf || by) ? f.hide() : f.show());
   gf ? fGf.show() : fGf.hide();
+  by ? fBy.show() : fBy.hide();
+  if (expStlCtl) expStlCtl.name(by ? 'Download STL (print layout)' : 'Download STL (engraved)');
+  tabsEl.querySelectorAll('a').forEach(b =>
+    b.setAttribute('aria-selected', String(b.dataset.mode === MODE.mode)));
+  modeCtl.updateDisplay();
+  if (modeFromHash() !== MODE.mode) history.replaceState(null, '', '#' + MODE.mode);
   window.owTrack && owTrack('mode_switch', { mode: MODE.mode });
   scheduleRebuild();
 }
 fGf.hide();
+fBy.hide();
+{ MODE.mode = modeFromHash() || MODE.mode;
+  const t = window.owTrack; window.owTrack = null; applyMode(); window.owTrack = t; } // initial tab state, not a user switch
 
 // Signature parameters (sig_enabled, sig_text, sig_size, sig_depth)
 // are intentionally NOT exposed in the GUI — they are locked product
@@ -1615,6 +2262,7 @@ function snapshotSession() {
     mode:     MODE.mode,
     params:   { ...P },
     gridfinity: { ...GP },
+    bayonet: { ...BP, view: BV.view, engage: BV.engage },
     printer: { ...PRINTER },
     // Carried along so a session that selects a custom printer still
     // resolves it on a machine that has never cached that printer.
@@ -1653,6 +2301,13 @@ function restoreSession(data) {
   if (data.gridfinity)
     for (const k of Object.keys(GP))
       if (k in data.gridfinity) GP[k] = data.gridfinity[k];
+  if (data.bayonet) {
+    for (const k of Object.keys(BP))
+      if (k in data.bayonet) BP[k] = data.bayonet[k];
+    if (data.bayonet.view)   BV.view   = data.bayonet.view;
+    if (data.bayonet.engage !== undefined) BV.engage = data.bayonet.engage;
+    fBy.controllersRecursive().forEach(c => c.updateDisplay());
+  }
 
   if (data.printer)
     for (const k of Object.keys(PRINTER))
@@ -1678,7 +2333,7 @@ function restoreSession(data) {
     }
     refreshPrinterList();
   }
-  if (data.mode === 'onewall' || data.mode === 'gridfinity') {
+  if (data.mode === 'onewall' || data.mode === 'gridfinity' || data.mode === 'bayonet') {
     MODE.mode = data.mode;
     applyMode();
   }
@@ -1807,6 +2462,20 @@ function makeSigCarveGeometry() {
 // Caller owns the returned geometry: call disposeExportRoot() when the
 // file has been written.
 async function prepareExportRoot(fmt) {
+  // Bayonet parts go out exactly as laid out on the bed: no signature,
+  // no carve. The geometries are clones — the caller disposes them.
+  if (MODE.mode === 'bayonet') {
+    const root = new THREE.Group();
+    const owned = [];
+    for (const p of bayPrintParts(getBayonet()).parts) {
+      const m = new THREE.Mesh(p.geom, material);
+      m.name = p.name;
+      root.add(m);
+      owned.push(p.geom);
+    }
+    root.updateMatrixWorld(true);
+    return { exportRoot: root, carvedMesh: null, sigGeom: null, carveOK: false, owned };
+  }
   let exportRoot = printGroup;
   let carvedMesh = null;
   let sigGeom    = null;
@@ -1875,7 +2544,8 @@ async function prepareExportRoot(fmt) {
   return { exportRoot, carvedMesh, sigGeom, carveOK };
 }
 
-function disposeExportRoot({ carvedMesh, sigGeom }) {
+function disposeExportRoot({ carvedMesh, sigGeom, owned }) {
+  if (owned) owned.forEach(g => g.dispose());
   if (carvedMesh) carvedMesh.geometry.dispose();
   if (sigGeom)    sigGeom.dispose();
 }
@@ -1887,6 +2557,14 @@ function exportBaseName() {
   // Fractional cell counts carry float noise from the slider — trim
   // them so the filename reads 3.5, not 3.5000000000000004.
   const num = v => String(+(+v).toFixed(2));
+  if (MODE.mode === 'bayonet') {
+    const plan = getBayonet().plan;
+    const sz = plan.round ? `d${num(BP.dia)}`
+      : `${num(BP.size_w)}x${num(BP.size_d)}${BP.slide_axis === 'y' ? 'y' : ''}`;
+    return `bayonet_${plan.family}_${plan.kind}_${BP.size_mode === 'inner' ? 'in' : 'out'}${sz}`
+      + `_n${plan.N}_m${num(BP.magnet_d)}x${num(BP.magnet_h)}`
+      + (BP.direction === 'left' ? '_L' : '_R');
+  }
   if (MODE.mode !== 'gridfinity') return 'onewall_bin';
   // A split plate is a different physical thing from the whole one —
   // the name has to say so, or two downloads collide in ~/Downloads.
@@ -2014,7 +2692,8 @@ async function export3MF() {
   }
 }
 
-gui.add({ exportSTL }, 'exportSTL').name('Download STL (engraved)');
+expStlCtl = gui.add({ exportSTL }, 'exportSTL').name('Download STL (engraved)');
+if (MODE.mode === 'bayonet') expStlCtl.name('Download STL (print layout)');
 gui.add({ exportStepFile }, 'exportStepFile').name('Download STEP (faceted)');
 gui.add({ export3MF }, 'export3MF').name('Download 3MF (mm, multi-part)');
 
