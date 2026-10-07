@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="OneWall">
+  <title>OneWall</title>
+  <!-- Vase-mode bin: one continuous wall (contour stripes), brass rim, seated on two grid-unit feet. -->
+  <rect width="256" height="256" rx="56" fill="#221E1A"/>
+  <path d="M64 90 L192 90 L186 184 L70 184 Z" fill="#E4632D" stroke="#E4632D" stroke-width="24" stroke-linejoin="round"/>
+  <rect x="68.2" y="120" width="119.7" height="8" rx="4" fill="#B8431A"/>
+  <rect x="70.0" y="148" width="116.1" height="8" rx="4" fill="#B8431A"/>
+  <rect x="48" y="66" width="160" height="26" rx="9" fill="#C9A227"/>
+  <rect x="72" y="202" width="52" height="12" rx="5" fill="#6E6357"/>
+  <rect x="132" y="202" width="52" height="12" rx="5" fill="#6E6357"/>
+</svg>
