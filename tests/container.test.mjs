@@ -47,11 +47,11 @@ console.log('1. volume / radius / height');
   ok(filletVolume(30, 0) === 0, 'no fillet → no fillet volume');
 
   const a = solveDims({ solve: 'height', volume: 500, radius: 35 });
-  ok(near(capacityMm3(a.radius, a.height, 6) / 1000, 500, 0.01), `height from volume round-trips (${a.height.toFixed(1)} mm)`);
+  ok(near(capacityMm3(a.radius, a.height, 6, a.loss) / 1000, 500, 0.01), `height from volume round-trips (${a.height.toFixed(1)} mm)`);
   const b = solveDims({ solve: 'radius', volume: 500, height: 90 });
-  ok(near(capacityMm3(b.radius, 90, 6) / 1000, 500, 0.01), `radius from volume round-trips (${b.radius.toFixed(1)} mm)`);
+  ok(near(capacityMm3(b.radius, 90, 6, b.loss) / 1000, 500, 0.01), `radius from volume round-trips (${b.radius.toFixed(1)} mm)`);
   const c = solveDims({ solve: 'volume', radius: 35, height: 90 });
-  ok(near(c.volume, capacityMm3(35, 90, 6) / 1000, 1e-9), `volume from radius + height (${c.volume.toFixed(0)} mL)`);
+  ok(near(c.volume, capacityMm3(35, 90, 6, c.loss) / 1000, 1e-9), `volume from radius + height (${c.volume.toFixed(0)} mL)`);
   ok(solveDims({ solve: 'height', volume: 500, radius: 50 }).height < a.height, 'wider jar is shorter for the same volume');
   ok(solveDims({ solve: 'height', volume: 500, radius: 35, fillet: 0 }).height < a.height,
      'the fillet costs height: without it the same volume is shorter');
@@ -101,6 +101,9 @@ const CASES = [
   { pattern: 'hex', pattern_count: 18, knurl: 'both' },
   { pattern: 'spiral', pattern_count: 12, knurl: 'off', fillet: 0 },
   { solve: 'radius', volume: 800, height: 120, radius: 40, magnet_d: 8, magnet_h: 3 },
+  { closure: 'twin' },
+  { closure: 'twin', pattern: 'diamond', knurl: 'both', direction: 'left', magnet_d: 5, magnet_h: 2 },
+  { closure: 'twin', solve: 'radius', volume: 600, height: 110 },
   { solve: 'volume', radius: 22, height: 70, magnet_d: 4, magnet_h: 1.5, direction: 'left', teeth: 3 },
 ];
 for (const bp of CASES) {
@@ -128,15 +131,28 @@ console.log('5. size honoured');
   const { plan } = buildContainer({ solve: 'height', volume: 400, radius: 32 });
   ok(near(plan.box.volume, 400, 0.01), `capacity ${plan.box.volume.toFixed(1)} mL = 400 mL asked`);
   ok(near(plan.box.height, plan.zFlip - plan.box.zfl, 1e-9), 'inner height = floor → lid underside');
-  ok(near(plan.rb, 32, 1e-9), 'connector bore = inner radius (the opening is as wide as the jar)');
-  ok(plan.box.flangeD > plan.box.outerD, 'socket flange is wider than the wall');
+  ok(near(plan.ro - 32, plan.box.wall, 1e-9) && plan.rb < 32, 'opening is narrower than the cavity; outside = inside + wall');
+  ok(near(plan.box.outerD, plan.box.flangeD, 1e-9) && near(plan.box.outerD, plan.box.lidD, 1e-9), 'jar, socket and lid are all the same outer width');
+  { const { parts } = buildContainer({ volume: 400, radius: 32 });
+    let mx = 0; for (const p of [parts[1].body, parts[0].body]) { let m = 0; for (let k = 0; k < p.p.length; k += 3) m = Math.max(m, Math.hypot(p.p[k], p.p[k + 1])); mx = Math.max(mx, Math.abs(m - plan.ro)); }
+    ok(mx < 0.05, 'widest point of body and of lid both reach the same outer radius'); }
   const sm = buildContainer({ volume: 20, radius: 30 });
   ok(sm.plan.warnings.some(w => /smallest jar/.test(w)), 'a volume that cannot fit the connector is flagged');
   ok(sm.plan.box.volume > 20, 'and the jar grows to the smallest that works instead of breaking');
 
   const flat = buildContainer({ pattern: 'smooth', knurl: 'off' }).parts[1].body;
   const fl = buildContainer({ pattern: 'flutes', knurl: 'off', pattern_amp: 1.2 }).parts[1].body;
-  ok(meshVolume(fl) > meshVolume(flat), 'pattern only adds plastic outside');
+  const outerR = m => { let v = 0; for (let k = 0; k < m.p.length; k += 3) v = Math.max(v, Math.hypot(m.p[k], m.p[k + 1])); return v; };
+  ok(near(outerR(fl), outerR(flat), 0.05), 'pattern peaks reach the same outer radius as the smooth jar (same width as the lid)');
+  ok(meshVolume(fl) < meshVolume(flat), 'the pattern valleys sit below the peaks, so the textured jar uses less plastic');
+  for (const closure of ['plug', 'twin']) {
+    const q = buildContainer({ volume: 400, radius: 32, closure, pattern: 'flutes', knurl: 'both' });
+    const [lid, body] = q.parts;
+    ok(near(outerR(lid.body), outerR(body.body), 0.05), closure + ': lid and jar are the same width (' + outerR(body.body).toFixed(2) + ' mm radius)');
+    ok(near(outerR(body.body), q.plan.box.outerD / 2, 0.05), closure + ': jar reaches the planned outer radius');
+    ok(q.plan.box.wall > 0.8, closure + ': wall keeps its thickness (' + q.plan.box.wall.toFixed(1) + ' mm peak to inside)');
+  }
+  ok(buildContainer({ closure: 'twin' }).plan.distinct && buildContainer({ closure: 'twin' }).plan.kind === 'twin', 'twin closure: hook set shared, lid and body are distinct solids');
   // the inside never moves: smallest radius of any vertex above the floor fillet is the bore
   const inner = m => { let v = 1e9; for (let k = 0; k < m.p.length; k += 3) if (m.p[k + 2] > -1) v = Math.min(v, Math.hypot(m.p[k], m.p[k + 1])); return v; };
   ok(near(inner(fl), inner(flat), 1e-6), 'inner wall is identical with and without the pattern');

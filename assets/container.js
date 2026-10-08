@@ -26,7 +26,7 @@
 //  underside is at z = zFlip = Hf + c. The container hangs below z = 0.
 // ════════════════════════════════════════════════════════════
 
-import { BAYONET_DEFAULTS, buildBayonet, mergeMeshes, orient } from './bayonet.js';
+import { BAYONET_DEFAULTS, buildBayonet, planBayonet, mergeMeshes, orient } from './bayonet.js';
 
 export const CONTAINER_DEFAULTS = {
   // — size: any two of volume / radius / height, the third is calculated —
@@ -49,6 +49,13 @@ export const CONTAINER_DEFAULTS = {
   knurl_pitch: 2.2,         // mm between ridges (coarser on big jars: see MAX_KNURL)
   knurl_depth: 0.5,         // mm
   knurl_h: 14,              // height of the grip band on the body, mm
+  // — text on the lid's outer face —
+  lid_text: '',             // empty = none
+  lid_text_size: 10,        // letter height, mm (shrinks to fit the lid)
+  lid_text_depth: 0.6,      // mm
+  lid_text_mode: 'engrave', // engrave | recess (raised letters inside a shallow recessed disc)
+  // — closure: how the lid joins the jar —
+  closure: 'plug',          // plug = male+female, closed | twin = two identical hook halves + skirt
   // — bayonet (magnet) —
   magnet_d: 6, magnet_h: 2,
   fit: 0.4, ribs: 4, crush: 0.15,
@@ -61,6 +68,7 @@ export const CONTAINER_DEFAULTS = {
 
 export const CONTAINER_KEYS = Object.keys(CONTAINER_DEFAULTS);
 export const PATTERNS = ['smooth', 'flutes', 'rings', 'diamond', 'hex', 'spiral'];
+export const SKIRT_T = 2.2;      // twin closure: wall of the lid skirt that hides the hooks, mm
 export const MAX_KNURL = 120;     // ridges around — keeps the mesh printable-size and CSG-able
 
 const TAU = 2 * Math.PI;
@@ -80,30 +88,76 @@ export function filletVolume(r, rf) {
   return TAU * (sq - qd);
 }
 const rfFor = (o, r, h) => Math.max(0, Math.min(num(o.fillet, 6), 0.8 * r, 0.5 * h));
-export const capacityMm3 = (r, h, rf) => Math.PI * r * r * h - filletVolume(r, rf);
+export const capacityMm3 = (r, h, rf, loss = 0) => Math.PI * r * r * h - filletVolume(r, rf) - loss;
+
+// Tallest bump the outside can carry (pattern or knurl band). The wall is
+// thickened so the valleys keep at least 0.8 mm.
+function ampMax(o) {
+  const pat = PATTERNS.includes(o.pattern) && o.pattern !== 'smooth' ? Math.max(0, num(o.pattern_amp, 0.8)) : 0;
+  const kn = o.knurl === 'body' || o.knurl === 'both' ? Math.max(0, num(o.knurl_depth, 0.5)) : 0;
+  return Math.max(pat, kn);
+}
+// Twin closure: the lid carries a skirt that hides the hooks, so the hook ring is
+// narrower than the jar by the skirt and one clearance.
+const twinOff = o => (o.closure === 'twin' ? SKIRT_T + Math.max(0, num(o.clearance, 0.2)) : 0);
+// wall = outside radius (bump peaks) − inside radius
+const wallFor = o => Math.max(num(o.wall, 2.4), ampMax(o) + 0.8);
+
+const bayParams = (o, rb) => ({
+  ...BAYONET_DEFAULTS,
+  family: 'round', kind: o.closure === 'twin' ? 'twin' : 'malefemale', size_mode: 'inner',
+  dia: 2 * rb, base_t: Math.max(3, num(o.lid_t, 6)),
+  magnet_d: o.magnet_d, magnet_h: o.magnet_h, fit: o.fit, ribs: o.ribs, crush: o.crush,
+  clearance: o.clearance, wall: o.mwall, teeth: o.teeth,
+  direction: o.direction, chamfer: o.chamfer,
+});
+
+// The jar is as wide outside as the lid: the socket's outer radius `ro` is
+// the jar's outer radius. The opening (the bayonet bore rb) is therefore
+// narrower than the cavity by ringT − wall, and the cavity widens below
+// the neck at 45° (prints without support). Find the bore for which
+// ro = r + wall.
+export function connectorPlan(o, r) {
+  const wall = wallFor(o);
+  let rb = Math.max(5, r);
+  for (let k = 0; k < 6; k++) {
+    const t = Math.max(5, r + wall - twinOff(o) - planBayonet(bayParams(o, rb)).ringT);
+    if (Math.abs(t - rb) < 1e-7) break;
+    rb = t;
+  }
+  return planBayonet(bayParams(o, rb));
+}
+
+// What the narrow neck takes away from the plain r × h cylinder: the 45°
+// shoulder plus the bore above it, up to the underside of the closed lid.
+export function neckLoss(plan, r) {
+  const { rb, T, zFlip } = plan, d = Math.max(0, r - rb);
+  return Math.PI * r * r * d - Math.PI * d / 3 * (r * r + r * rb + rb * rb)
+       + Math.PI * (r * r - rb * rb) * (zFlip + T);
+}
+const capOf = (o, r, h) => capacityMm3(r, h, rfFor(o, r, h), neckLoss(connectorPlan(o, r), r));
 
 // Solve the one quantity named by `solve` from the other two.
 export function solveDims(bp = {}) {
   const o = { ...CONTAINER_DEFAULTS, ...bp };
   let V = Math.max(1, num(o.volume, 300)) * 1000;      // mm³
-  let r = Math.max(5, num(o.radius, 30));
+  let r = Math.max(8, num(o.radius, 30));
   let h = Math.max(5, num(o.height, 100));
   if (o.solve === 'volume') {
-    V = capacityMm3(r, h, rfFor(o, r, h));
+    V = capOf(o, r, h);
   } else if (o.solve === 'radius') {
-    let lo = 5, hi = 600;                              // capacity grows with r
-    for (let k = 0; k < 60; k++) {
+    let lo = 8, hi = 600;                              // capacity grows with r
+    for (let k = 0; k < 50; k++) {
       const mid = (lo + hi) / 2;
-      if (capacityMm3(mid, h, rfFor(o, mid, h)) < V) lo = mid; else hi = mid;
+      if (capOf(o, mid, h) < V) lo = mid; else hi = mid;
     }
     r = (lo + hi) / 2;
   } else {
-    h = V / (Math.PI * r * r);                         // first guess ignores the fillet…
-    for (let k = 0; k < 20; k++) {                     // …then converge (fillet depends on h only via its clamp)
-      h = (V + filletVolume(r, rfFor(o, r, h))) / (Math.PI * r * r);
-    }
+    const loss = neckLoss(connectorPlan(o, r), r);
+    for (let k = 0; k < 20; k++)                       // the fillet clamp depends on h
+      h = (V + filletVolume(r, rfFor(o, r, h)) + loss) / (Math.PI * r * r);
   }
-  return { volume: V / 1000, radius: r, height: h };
+  return { volume: V / 1000, radius: r, height: h, loss: neckLoss(connectorPlan(o, r), r) };
 }
 
 // ── Outside texture ─────────────────────────────────────────
@@ -217,36 +271,33 @@ export function buildContainer(bp = {}) {
   const warnings = [];
 
   const lidT = Math.max(3, num(o.lid_t, 6));
-  const { plan, parts } = buildBayonet({
-    ...BAYONET_DEFAULTS,
-    family: 'round', kind: 'malefemale', size_mode: 'inner',
-    dia: 2 * r, base_t: lidT,
-    magnet_d: o.magnet_d, magnet_h: o.magnet_h, fit: o.fit, ribs: o.ribs, crush: o.crush,
-    clearance: o.clearance, wall: o.mwall, teeth: o.teeth,
-    direction: o.direction, chamfer: o.chamfer,
-  });
+  const cp = connectorPlan(o, r);
+  const { plan, parts } = buildBayonet(bayParams(o, cp.rb));
   warnings.push(...plan.warnings);
 
   const { ro, rb, rfb, rmo, Hf, Hm, T, zFlip } = plan;
   const ch = Math.max(0, Math.min(plan.chamfer, T / 2, (ro - rb) / 3));
-  const wall = clamp(num(o.wall, 2.4), 0.8, Math.max(0.8, ro - rb - 1));
-  const Rw = r + wall;
+  const twin = o.closure === 'twin';
+  const off = twinOff(o);
+  const Rout = ro + off;                             // outside radius of the jar AND of the lid (bump peaks)
+  const wall = Rout - r;                             // outside (bump peaks) − inside
   const floorT = Math.max(0.8, num(o.floor_t, 3));
-  const coneH = Math.max(0, ro - Rw);               // 45° flange under the socket: prints without support
-  const zCone = -T - coneH;
+  const neckD = Math.max(0, r - rb);                 // the shoulder from the opening out to the cavity
+  const zc0 = -T - neckD;                            // where the cavity reaches its full radius
+  const loss = neckLoss(plan, r);
 
   // floor level, floor → lid underside is `height`
   let zfl = zFlip - dims.height;
-  const zflMax = zCone - 1;
+  const zflMax = zc0 - 1;
   if (zfl > zflMax) {
     zfl = zflMax;
-    const minV = capacityMm3(r, zFlip - zfl, rfFor(o, r, zFlip - zfl)) / 1000;
+    const minV = capacityMm3(r, zFlip - zfl, rfFor(o, r, zFlip - zfl), loss) / 1000;
     warnings.push(`Too small for this connector at radius ${r.toFixed(1)} mm — the smallest jar here holds ${minV.toFixed(0)} mL. Raise the volume, widen the jar or use smaller magnets.`);
   }
   const hIn = zFlip - zfl;
   const rf = rfFor(o, r, hIn);
-  const rfl = Math.max(0, Math.min(rf, -zfl - 1));  // fillet that fits under the socket floor
-  const capacity = capacityMm3(r, hIn, rf) / 1000;
+  const rfl = Math.max(0, Math.min(rf, zc0 - zfl - 0.5));  // fillet that fits under the shoulder
+  const capacity = capacityMm3(r, hIn, rf, loss) / 1000;
   const zBot = zfl - floorT;
 
   // — wall texture —
@@ -262,16 +313,20 @@ export function buildContainer(bp = {}) {
   // ridge count: a multiple of the pattern count, so every ring has samples on both grids
   let K = 0;
   if (useKnurl) {
-    const want = Math.round(TAU * ro / Math.max(1, num(o.knurl_pitch, 2.2)));
+    const want = Math.round(TAU * Rout / Math.max(1, num(o.knurl_pitch, 2.2)));
     K = nPat * Math.max(2, Math.round(want / nPat));
     while (K > MAX_KNURL && K > 2 * nPat) K -= nPat;
   }
   const M = useKnurl && (kBody || kLid) ? Math.max(4 * K, 8 * nPat)
           : kind !== 'smooth' ? Math.max(120, 8 * nPat) : 120;
+  // bump PEAKS sit on the socket's outer radius, so the jar is exactly as wide as the lid
+  const Rw = Rout - ampMax(o);
+  const Rl = Rout - (kLid ? kDepth : 0);            // lid edge base
   const kPitchBody = TAU * Rw / Math.max(K, 1);
-  const kPitchLid = TAU * ro / Math.max(K, 1);
+  const kPitchLid = TAU * Rout / Math.max(K, 1);
 
-  const zw0 = zBot + ch, zw1 = zCone;
+  const zw0 = zBot + ch, zw1 = twin ? -(Rout - Rw) : -T;
+  const lidTop = twin ? plan.G - plan.c : 0;         // top of the lid's edge (twin: the skirt)
   const kh = kBody ? clamp(num(o.knurl_h, 14), 2, Math.max(2, zw1 - zw0 - 1)) : 0;
   const patLo = zw0 + kh;
   const bodyDisp = (f, th, z) => {
@@ -287,7 +342,7 @@ export function buildContainer(bp = {}) {
     return d;
   };
   const lidDisp = (f, th, z) => kDepth * knurlValue(K, th, z, kPitchLid)
-    * ss(-T + ch, -T + ch + 0.8, z) * ss(0, -0.8, z);
+    * ss(-T + ch, -T + ch + 0.8, z) * ss(lidTop, lidTop - 0.8, z);
 
   // — body: socket + flange + patterned wall + rounded inside —
   const dzPat = kind === 'rings' || kind === 'diamond' || kind === 'spiral'
@@ -301,39 +356,46 @@ export function buildContainer(bp = {}) {
   const bodyProf = [
     { s: 0, z: zBot }, { s: Rw - ch, z: zBot },
     ...wallZ.map(z => ({ s: Rw, z, f: 1 })),
-    { s: ro, z: -T }, { s: ro, z: Hf }, { s: rfb, z: Hf }, { s: rfb, z: 0 },
-    { s: rb, z: 0 }, { s: rb, z: zfl + rfl },
-    ...(rfl > 0.05 ? filletArc(rb, zfl, rfl) : [{ s: rb, z: zfl }]),
+    ...(twin
+      ? [{ s: Rout, z: 0 }, { s: rb, z: 0 }]       // flat top: the hooks stand on it, the lid skirt lands beside them
+      : [{ s: Rout, z: zw1 + (Rout - Rw) }, { s: Rout, z: Hf }, { s: rfb, z: Hf }, { s: rfb, z: 0 }, { s: rb, z: 0 }]),
+    { s: rb, z: -T }, { s: r, z: zc0 }, { s: r, z: zfl + rfl },
+    ...(rfl > 0.05 ? filletArc(r, zfl, rfl) : [{ s: r, z: zfl }]),
     { s: 0, z: zfl },
   ];
   const bodyMesh = revolve(dedupe(bodyProf), M, bodyDisp);
 
-  // — lid: plate (knurled edge) + hollow plug, bore capped and rounded —
-  const rflLid = Math.max(0, Math.min(rf, Hm - 0.6));
-  const lidEdgeZ = kLid ? zRange(-T + ch, 0, Math.max(0.3, kPitchLid / 4)) : [-T + ch, 0];
+  // — lid: plate (knurled edge), bore capped. plug: hollow plug with a rounded inside;
+  //   twin: a skirt around the hooks —
+  const rflLid = twin ? 0 : Math.max(0, Math.min(rf, Hm - 0.6));
+  const lidEdgeZ = kLid ? zRange(-T + ch, lidTop, Math.max(0.3, kPitchLid / 4)) : [-T + ch, lidTop];
   const lidProf = [
-    { s: 0, z: -T }, { s: ro - ch, z: -T },
-    ...lidEdgeZ.map(z => ({ s: ro, z, f: kLid ? 2 : 0 })),
-    { s: rmo, z: 0 }, { s: rmo, z: Hm }, { s: rb, z: Hm }, { s: rb, z: rflLid },
-    ...(rflLid > 0.05 ? filletArc(rb, 0, rflLid) : [{ s: rb, z: 0 }]),
-    { s: 0, z: 0 },
+    { s: 0, z: -T }, { s: Rl - ch, z: -T },
+    ...lidEdgeZ.map(z => ({ s: Rl, z, f: kLid ? 2 : 0 })),
+    ...(twin
+      ? [{ s: Rout - SKIRT_T, z: lidTop }, { s: Rout - SKIRT_T, z: 0 }, { s: 0, z: 0 }]
+      : [{ s: rmo, z: 0 }, { s: rmo, z: Hm }, { s: rb, z: Hm }, { s: rb, z: rflLid },
+         ...(rflLid > 0.05 ? filletArc(rb, 0, rflLid) : [{ s: rb, z: 0 }]),
+         { s: 0, z: 0 }]),
   ];
   const lidMesh = revolve(dedupe(lidProf), M, lidDisp);
 
-  const [male, female] = parts;
+  // plug: [plug, socket]; twin: the same hook set on both (the lid is the body's hooks, flipped)
+  const [male, female] = twin ? [parts[0], parts[0]] : parts;
   const lid = { ...male, name: 'lid', body: lidMesh };
   const body = { ...female, name: 'body', body: bodyMesh };
 
   const box = {
     ...dims, volume: capacity, radius: r, height: hIn, solved: o.solve,
-    wall, Rw, floorT, lidT: T, rf, rfl, rflLid, coneH, zfl, zBot, zCone,
-    outerD: 2 * Rw, flangeD: 2 * ro, lidD: 2 * ro + (kLid ? 2 * kDepth : 0),
-    bodyH: Hf - zBot, totalH: zFlip + T - zBot,
+    wall, Rw, floorT, lidT: T, rf, rfl, rflLid, neckD, zfl, zBot, zc0, loss,
+    outerD: 2 * Rout, flangeD: 2 * Rout, lidD: 2 * Rout, openD: 2 * rb, closure: twin ? 'twin' : 'plug',
+    bodyH: (twin ? 0 : Hf) - zBot, totalH: zFlip + T - zBot,
     pattern: kind, M, K,
     wallVolume: 0,
   };
   plan.warnings = warnings;
   plan.box = box;
+  plan.distinct = true;     // lid and body are two different solids even for a twin hook set
   plan.bedZ = -zBot;        // lifts the connector frame so the container stands on the bed
   return { plan, parts: [lid, body] };
 }

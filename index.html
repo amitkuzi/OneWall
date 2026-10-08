@@ -322,7 +322,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Containers &amp; Gridfinity Bins / Baseplates</span>
-    <span class="ver">v0.1-1008-123945</span>
+    <span class="ver">v0.1-1009-002824</span>
   </div>
   <div id="mode-tabs" role="tablist" aria-label="Mode"></div>
   <nav>
@@ -452,6 +452,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <tr><td>Outside pattern</td><td><em>flutes</em>, <em>rings</em>, <em>diamond</em>, <em>hex</em> domes, <em>spiral</em> or smooth. Bumps only grow outward from the wall, so a pattern never thins it. It eases out near the flange and the base.</td></tr>
       <tr><td>Knurl</td><td>Crossed diamond ridges for grip, on the lid edge, in a band at the bottom of the jar, or both. On very wide jars the ridges get coarser to keep the model printable.</td></tr>
       <tr><td>Magnet bayonet</td><td>Magnet size, press-fit ribs, pins and twist direction — same as the Bayonet tab. The socket is a flange wider than the wall, so the lid is wider than the jar; a bigger magnet means a wider flange. A volume too small for the connector is flagged and the jar is made as small as it can be.</td></tr>
+      <tr><td>Lid text</td><td>Any text on the outer face of the lid, read from above on the closed jar (shrinks to fit). <em>Engraved</em> cuts the letters in; <em>raised in a recessed disc</em> leaves the letters standing inside a shallow disc, flush with the lid face — raised letters on the face itself would have to print into the bed. The lid prints face-down, so keep the depth at 0.4 mm or more.</td></tr>
       <tr><td>Preview</td><td>Assembled with a lid slider (lifted → locked), or the print layout: lid plate-down, jar upright, exactly what the STL / STEP / 3MF contains. Edits rebuild a moment after you stop moving a slider.</td></tr>
     </table>
 
@@ -1366,7 +1367,7 @@ function bayPartGeom(part, thick) {
 
 function bayPrintParts(built, thick = false) {
   const { plan, parts } = built;
-  const list = plan.kind === 'malefemale'
+  const list = plan.kind === 'malefemale' || plan.distinct
     ? parts.map(p => ({ name: p.name, geom: bayPartGeom(p, thick) }))
     : [{ name: 'half_1', geom: bayPartGeom(parts[0], thick) },
        { name: 'half_2', geom: bayPartGeom(parts[0], thick) }];
@@ -1424,7 +1425,7 @@ function bayUpperMatrix(plan, t) {
 // or the plug flipped (male/female); `engage` 0 → apart, 1 → locked.
 function bayAssembled(built) {
   const { plan, parts } = built;
-  const lowerPart = plan.kind === 'malefemale' ? parts[1] : parts[0];
+  const lowerPart = plan.kind === 'malefemale' || plan.distinct ? parts[1] : parts[0];
   const upperPart = parts[0];
   const thick = BV.thick && upperPart.geomThick;
   const mat = side => {
@@ -1743,13 +1744,55 @@ async function thicknessColors(geom, partNo, nParts) {
 // sliders to show, so it must not be part of the key.
 let conCache = null;
 function getContainer() {
-  const key = JSON.stringify(CONTAINER_KEYS.filter(k => k !== CP.solve).map(k => CP[k]));
+  const key = JSON.stringify([...CONTAINER_KEYS.filter(k => k !== CP.solve).map(k => CP[k]), !!svaseFont]);
   if (conCache && conCache.key === key) return conCache.built;
   const { plan, parts } = buildContainer(CP);
+  const textCuts = lidTextCutters(plan);
+  if (textCuts.length) parts[0].cuts = [...parts[0].cuts, ...textCuts];
   const solid = parts.map(p => ({ ...p, geom: solidifyBayonetPart(p) }));
   if (conCache) conCache.built.parts.forEach(p => p.geom.dispose());
   conCache = { key, built: { plan, parts: solid } };
   return conCache.built;
+}
+
+// Text on the lid's OUTER face (local z = −T, the face that sits on the bed
+// when printed and faces up once the lid is on). The lid is flipped over
+// to close, so the text is rotated about X by π: it then reads correctly
+// from above on the closed jar and on the lid turned over after printing.
+function geomToMesh(g) {
+  const pos = g.attributes.position.array;
+  const n = pos.length / 3;
+  return { p: Array.from(pos), i: g.index ? Array.from(g.index.array) : Array.from({ length: n }, (_, k) => k) };
+}
+function lidTextCutters(plan) {
+  const text = (CP.lid_text || '').trim();
+  if (!text || !svaseFont) return [];
+  const b = plan.box, T = b.lidT;
+  const depth = Math.max(0.2, CP.lid_text_depth), m = 0.4;      // m: overshoot below the face
+  const recess = CP.lid_text_mode === 'recess';
+  const zLo = -T - m, zHi = -T + depth + (recess ? 0.2 : 0);
+  let tg = new TextGeometry(text, { font: svaseFont, size: CP.lid_text_size, depth: zHi - zLo,
+                                    curveSegments: 6, bevelEnabled: false });
+  tg.center();
+  tg.computeBoundingBox();
+  const w = tg.boundingBox.max.x - tg.boundingBox.min.x, h = tg.boundingBox.max.y - tg.boundingBox.min.y;
+  const Rpl = b.outerD / 2 - 3;                                // flat face of the lid, less its edge
+  const k = Math.min(1, (2 * Rpl - 4) / Math.max(1e-6, Math.hypot(w, h)));
+  tg.scale(k, k, 1);
+  tg.rotateX(Math.PI);
+  tg.translate(0, 0, (zLo + zHi) / 2);
+  try { tg = mergeVertices(tg, 1e-4); tg.computeVertexNormals(); } catch (e) { console.warn('OneWall: lid text mergeVertices failed', e); }
+  if (!recess) return [geomToMesh(tg)];
+  // recess: cut a shallow disc, but leave the letters standing in it
+  const Rd = Math.min(Rpl, Math.hypot(w, h) * k / 2 + 2);
+  const dg = new THREE.CylinderGeometry(Rd, Rd, depth + m, 72);
+  dg.rotateX(Math.PI / 2);
+  dg.translate(0, 0, (-T - m + (-T + depth)) / 2);
+  const ev = new Evaluator();
+  ev.useGroups = false; ev.attributes = ['position', 'normal'];
+  const db = new Brush(dg); db.updateMatrixWorld();
+  const tb = new Brush(tg); tb.updateMatrixWorld();
+  return [geomToMesh(ev.evaluate(db, tb, SUBTRACTION).geometry)];
 }
 
 const CON_CLIP = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);   // keeps y ≥ 0: a half-section
@@ -1817,7 +1860,7 @@ let conSizeCtls = [];
 function refreshContainerCalc(plan, mc) {
   const b = plan.box, f1 = v => (+v).toFixed(1);
   CPC.size    = `${f1(b.volume)} mL = ⌀${f1(2 * b.radius)} × ${f1(b.height)} mm inside`;
-  CPC.outer   = `⌀${f1(b.outerD)} wall · ⌀${f1(b.flangeD)} socket · ${f1(b.bodyH)} mm body`;
+  CPC.outer   = `⌀${f1(b.outerD)} outside (jar = lid) · opening ⌀${f1(b.openD)} · ${f1(b.bodyH)} mm body`;
   CPC.lid     = `⌀${f1(b.lidD)} × ${f1(b.lidT)} mm plate · ${f1(b.totalH)} mm closed`;
   CPC.fillet  = b.rf > 0 ? `R${f1(b.rf)} floor, R${f1(b.rflLid)} lid — no sharp inside corner` : 'none — sharp corners';
   CPC.pattern = `${b.pattern}${b.K ? ` + knurl ${b.K} ridges` : ''} · ${b.M} samples/ring`;
@@ -2339,6 +2382,10 @@ fCoKn.add(CP, 'knurl_depth', 0.2, 1.2, 0.05).name('Ridge height (mm)').onChange(
 fCoKn.add(CP, 'knurl_h', 4, 40, 1).name('Jar band height (mm)').onChange(conGo);
 
 const fCoMag = fCo.addFolder('Magnet bayonet');
+fCoMag.add(CP, 'closure', {
+  'Plug — male + female, closed (recommended)': 'plug',
+  'Twin — two identical hook halves + skirt': 'twin',
+}).name('Closure').onChange(conGo);
 fCoMag.add(CP, 'direction', { 'Right — clockwise to lock': 'right', 'Left — counter-clockwise': 'left' })
   .name('Direction').onChange(conGo);
 fCoMag.add(CP, 'magnet_d', 2, 20, 0.5).name('Magnet diameter (mm)').onChange(conGo);
@@ -2350,6 +2397,15 @@ fCoMag.add(CP, 'mwall', 0.8, 3, 0.1).name('Plastic around magnet').onChange(conG
 fCoMag.add(CP, 'teeth', 0, 8, 1).name('Pins (0 = auto)').onChange(conGo);
 fCoMag.add(CP, 'clearance', 0, 0.6, 0.05).name('Print clearance (mm)').onChange(conGo);
 fCoMag.add(CP, 'chamfer', 0, 3, 0.1).name('Bottom edge chamfer (mm)').onChange(conGo);
+
+const fCoText = fCo.addFolder('Lid text');
+fCoText.add(CP, 'lid_text').name('Text (empty = none)').onChange(conGo);
+fCoText.add(CP, 'lid_text_size', 3, 40, 0.5).name('Letter height (mm)').onChange(conGo);
+fCoText.add(CP, 'lid_text_depth', 0.2, 2, 0.1).name('Depth (mm)').onChange(conGo);
+fCoText.add(CP, 'lid_text_mode', {
+  'Engraved': 'engrave',
+  'Raised in a shallow recessed disc': 'recess',
+}).name('Style').onChange(conGo);
 
 const fCoView = fCo.addFolder('Preview');
 fCoView.add(BV, 'view', {
