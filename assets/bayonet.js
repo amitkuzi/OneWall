@@ -359,7 +359,7 @@ export function meshVolume(m) {
 
 // Outward-facing triangles ⇒ positive signed volume. Every primitive
 // is built with consistent winding, so one global flip is enough.
-function orient(m) {
+export function orient(m) {
   if (meshVolume(m) < 0)
     for (let t = 0; t < m.i.length; t += 3) {
       const x = m.i[t + 1]; m.i[t + 1] = m.i[t + 2]; m.i[t + 2] = x;

@@ -322,7 +322,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Containers &amp; Gridfinity Bins / Baseplates</span>
-    <span class="ver">v0.1-1007-141651</span>
+    <span class="ver">v0.1-1008-123945</span>
   </div>
   <div id="mode-tabs" role="tablist" aria-label="Mode"></div>
   <nav>
@@ -435,6 +435,24 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <tr><td>Teeth, width, strength</td><td>Leave at 0 for auto. Override the count, the tooth width, the tooth thickness (strength), the base and the ring wall when you know better. Too many teeth or too thin a tooth raises a warning.</td></tr>
       <tr><td>Sleeve</td><td>Adds a tube behind the connector so it can be glued or printed onto an object.</td></tr>
       <tr><td>Preview</td><td>Assembled shows both halves with an engage slider; Print layout shows exactly what the STL / STEP / 3MF contains.</td></tr>
+    </table>
+
+    <h3 data-i18n="help.co_title">Mode 4 — Container: a jar with a magnet-bayonet lid, sized by volume</h3>
+    <p data-i18n="help.co_intro">
+      A round jar whose lid twists on with the same magnet bayonet as the
+      Bayonet tab (male + female, so the connector is closed). Give any two of
+      <strong>volume / radius / height</strong>; the third is calculated and
+      its slider goes read-only. Everything inside is smooth and rounded so
+      the jar can be coated with a food-grade resin.
+    </p>
+    <table>
+      <tr><th>Setting</th><th>What it does</th></tr>
+      <tr><td>Calculate</td><td>Which of height / radius / volume is worked out from the other two. Volume is the sealed capacity: inner radius × height from the floor to the underside of the closed lid, minus the material of the inside fillet.</td></tr>
+      <tr><td>Inside fillet</td><td>Radius of the rounded floor corner (and the matching corner under the lid). Bigger is easier to coat and to clean; 0 gives a sharp corner. The half-section preview shows it.</td></tr>
+      <tr><td>Outside pattern</td><td><em>flutes</em>, <em>rings</em>, <em>diamond</em>, <em>hex</em> domes, <em>spiral</em> or smooth. Bumps only grow outward from the wall, so a pattern never thins it. It eases out near the flange and the base.</td></tr>
+      <tr><td>Knurl</td><td>Crossed diamond ridges for grip, on the lid edge, in a band at the bottom of the jar, or both. On very wide jars the ridges get coarser to keep the model printable.</td></tr>
+      <tr><td>Magnet bayonet</td><td>Magnet size, press-fit ribs, pins and twist direction — same as the Bayonet tab. The socket is a flange wider than the wall, so the lid is wider than the jar; a bigger magnet means a wider flange. A volume too small for the connector is flagged and the jar is made as small as it can be.</td></tr>
+      <tr><td>Preview</td><td>Assembled with a lid slider (lifted → locked), or the print layout: lid plate-down, jar upright, exactly what the STL / STEP / 3MF contains. Edits rebuild a moment after you stop moving a slider.</td></tr>
     </table>
 
     <h3 data-i18n="help.printer_title">Printer — check the fit before you press print, not after</h3>
@@ -680,6 +698,10 @@ import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh
 import { BAYONET_DEFAULTS, GEOMETRY_KEYS as BAYONET_KEYS,
          buildBayonet, magnetCount }
   from './assets/bayonet.js';
+// Container with a magnet-bayonet lid — builds on the bayonet module
+import { CONTAINER_DEFAULTS, CONTAINER_KEYS, PATTERNS as CON_PATTERNS,
+         buildContainer }
+  from './assets/container.js';
 // Gridfinity Creator — shared math module (also unit-tested in Node)
 import { buildBin as gfBuildBin, buildBaseplate as gfBuildPlate,
          planPlateTiles as gfPlanTiles, packBuildPlates as gfPackPlates,
@@ -759,6 +781,15 @@ const BV = { view: 'assembled', engage: 1, magnets: true, ghost: true,
 const BPC = { teeth: '', tooth_w: '', tooth_t: '', foot: '', stack: '',
               travel: '', magnets: '', pocket: '', collide: 'not run yet',
               walls: 'not run yet', strength: '', note: '' };
+
+// ── Container (jar + bayonet lid) state ─────────────────────
+// CP mirrors CONTAINER_DEFAULTS. CV only moves the preview. The lid
+// reuses the bayonet pipeline (CSG, assembly animation, print layout),
+// so the view/engage/see-through flags are shared with BV.
+const CP = { ...CONTAINER_DEFAULTS };
+const CV = { section: false };
+const CPC = { size: '', outer: '', lid: '', fillet: '', pattern: '', magnets: '',
+              travel: '', strength: '', note: '' };
 
 // ── Printer / build plate ───────────────────────────────────
 // Not gridfinity-specific: "will this come off my printer?" is a
@@ -1428,7 +1459,7 @@ function bayAssembled(built) {
 
   root.add(lower, pivot);
   if (!plan.round && BP.slide_axis === 'y') root.rotation.z = Math.PI / 2;
-  root.position.z = plan.T;                  // lower base sits on the bed
+  root.position.z = plan.bedZ ?? plan.T;    // lower base sits on the bed (a container hangs lower)
   return root;
 }
 
@@ -1702,6 +1733,104 @@ async function thicknessColors(geom, partNo, nParts) {
   return { colors, min, weakArea, amberArea };
 }
 
+// ════════════════════════════════════════════════════════════
+//  CONTAINER + BAYONET LID
+// ════════════════════════════════════════════════════════════
+// container.js returns the lid and the body in the bayonet part shape,
+// so they are solidified, laid out on the bed and animated by the very
+// same code as the Bayonet tab. Only the cache key is different: the
+// quantity that is CALCULATED (CP.solve) is written back into CP for the
+// sliders to show, so it must not be part of the key.
+let conCache = null;
+function getContainer() {
+  const key = JSON.stringify(CONTAINER_KEYS.filter(k => k !== CP.solve).map(k => CP[k]));
+  if (conCache && conCache.key === key) return conCache.built;
+  const { plan, parts } = buildContainer(CP);
+  const solid = parts.map(p => ({ ...p, geom: solidifyBayonetPart(p) }));
+  if (conCache) conCache.built.parts.forEach(p => p.geom.dispose());
+  conCache = { key, built: { plan, parts: solid } };
+  return conCache.built;
+}
+
+const CON_CLIP = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);   // keeps y ≥ 0: a half-section
+let conFramed = false;
+function frameContainer(plan) {
+  const b = plan.box;
+  const r = Math.max(b.lidD / 2, b.totalH / 2, 25);
+  controls.target.set(0, 0, b.totalH * 0.4);
+  camera.position.set(r * 3.2, -r * 3.8, r * 2.6 + b.totalH * 0.4);
+  controls.update();
+}
+
+function rebuildContainer() {
+  const built = getContainer();
+  const { plan } = built;
+  const b = plan.box;
+  const layout = bayPrintParts(built, false);
+
+  if (BV.view === 'print') {
+    bayRoot = new THREE.Group();
+    for (const p of layout.parts) {
+      const m = new THREE.Mesh(p.geom, material);
+      m.name = p.name;
+      bayRoot.add(m);
+    }
+  } else {
+    layout.parts.forEach(p => p.geom.dispose());
+    bayRoot = bayAssembled(built);
+  }
+  // half-section: shows the rounded inside that gets the resin coat
+  renderer.localClippingEnabled = true;
+  bayRoot.traverse(o => {
+    if (!o.isMesh) return;
+    if (o.material === material) o.material = material.clone();
+    o.material.clippingPlanes = CV.section ? [CON_CLIP] : null;
+    o.material.side = THREE.DoubleSide;
+  });
+  printGroup.add(bayRoot);
+  if (!conFramed) { frameContainer(plan); conFramed = true; }
+
+  // the solved quantity goes back into its slider
+  const solved = { height: b.height, radius: b.radius, volume: b.volume }[CP.solve];
+  if (solved !== undefined) CP[CP.solve] = +solved.toFixed(CP.solve === 'volume' ? 1 : 2);
+  conSizeCtls.forEach(c => c.updateDisplay());
+
+  const mc = magnetCount(plan);
+  let note = `${b.volume.toFixed(0)} mL · inner ⌀${(2 * b.radius).toFixed(1)}×${b.height.toFixed(1)} mm`
+           + ` · outer ⌀${b.outerD.toFixed(1)}, flange/lid ⌀${b.lidD.toFixed(1)}`
+           + ` · ${b.totalH.toFixed(1)} mm tall closed`
+           + ` · ${mc.total} magnets ⌀${plan.magnet.d}×${plan.magnet.h}`
+           + ` · print layout ${layout.width.toFixed(0)}×${layout.depth.toFixed(0)} mm`;
+  const bp = currentPlate();
+  if (layout.width > bp.w - 2 * PRINTER.margin || layout.depth > bp.d - 2 * PRINTER.margin)
+    note += `  ⚠ print layout is wider than the usable bed of ${bp.name}`;
+  else if (bp.h && b.bodyH > bp.h)
+    note += `  ⚠ taller than the build height of ${bp.name}`;
+  for (const w of plan.warnings) note += `  ⚠ ${w}`;
+  refreshContainerCalc(plan, mc);
+  const tris = built.parts.reduce((n, p) => n + p.geom.attributes.position.count / 3, 0);
+  return { plan, note, bed: bp, tris };
+}
+
+let conCalcCtrls = [];
+let conSizeCtls = [];
+function refreshContainerCalc(plan, mc) {
+  const b = plan.box, f1 = v => (+v).toFixed(1);
+  CPC.size    = `${f1(b.volume)} mL = ⌀${f1(2 * b.radius)} × ${f1(b.height)} mm inside`;
+  CPC.outer   = `⌀${f1(b.outerD)} wall · ⌀${f1(b.flangeD)} socket · ${f1(b.bodyH)} mm body`;
+  CPC.lid     = `⌀${f1(b.lidD)} × ${f1(b.lidT)} mm plate · ${f1(b.totalH)} mm closed`;
+  CPC.fillet  = b.rf > 0 ? `R${f1(b.rf)} floor, R${f1(b.rflLid)} lid — no sharp inside corner` : 'none — sharp corners';
+  CPC.pattern = `${b.pattern}${b.K ? ` + knurl ${b.K} ridges` : ''} · ${b.M} samples/ring`;
+  CPC.magnets = `${mc.total} × ⌀${plan.magnet.d}×${plan.magnet.h} mm (${plan.N} pins)`;
+  CPC.travel  = `${f1(Math.abs(plan.beta1 - plan.beta0) / plan.rRef * 180 / Math.PI)}° twist to lock`;
+  const lv = l => plan.strength.filter(k => k.level === l).length;
+  CPC.strength = plan.strength.length + ' checks: ' + lv('ok') + ' ok, ' + lv('warn') + ' amber, ' + lv('weak') + ' weak'
+    + (lv('weak') || lv('warn') ? ' — ' + plan.strength.filter(k => k.level !== 'ok')
+        .map(k => k.label + ' ' + k.value.toFixed(1) + k.unit.trim()).join('; ') : '');
+  CPC.note    = plan.warnings.length ? plan.warnings[0] : 'ok';
+  conCalcCtrls.forEach(c => c.updateDisplay());
+}
+
 let lastPlan = null;   // tile plan behind the current preview, if any
 
 function rebuild() {
@@ -1768,6 +1897,16 @@ function rebuild() {
       console.error('OneWall bayonet build failed:', err);
       note = '  ⚠ bayonet build failed: ' + err.message;
     }
+  } else if (MODE.mode === 'container') {
+    try {
+      const r = rebuildContainer();
+      note = '  ' + r.note;
+      tris = r.tris; verts = r.tris * 3;
+      beds = [{ x: 0, y: 0, w: r.bed.w, d: r.bed.d }];
+    } catch (err) {
+      console.error('OneWall container build failed:', err);
+      note = '  ⚠ container build failed: ' + err.message;
+    }
   } else {
     const g = buildGeometry();
     binMesh = new THREE.Mesh(g.geom, material);
@@ -1800,9 +1939,11 @@ function updateSigBadge() {
   const txt   = document.getElementById('sig-badge-text');
   const gf = MODE.mode === 'gridfinity';
   const by = MODE.mode === 'bayonet';
-  const on = !gf && !by && P.sig_enabled && P.sig_text && svaseFont;
+  const co = MODE.mode === 'container';
+  const on = !gf && !by && !co && P.sig_enabled && P.sig_text && svaseFont;
   badge.classList.toggle('off', !on);
-  txt.textContent = by ? '(none — bayonet)'
+  txt.textContent = co ? '(none — container)'
+    : by ? '(none — bayonet)'
     : gf ? '(none — gridfinity)'
     : P.sig_enabled ? (P.sig_text || '(empty)')
     : '(disabled)';
@@ -1888,6 +2029,7 @@ const MODE_TABS = [
   { id: 'onewall',   label: 'OneWall' },
   { id: 'gridfinity', label: 'Gridfinity' },
   { id: 'bayonet',   label: 'Bayonet' },
+  { id: 'container', label: 'Container' },
 ];
 const modeCtl = gui.add(MODE, 'mode', MODE_TABS.map(t => t.id))
    .name('Mode')
@@ -2155,6 +2297,82 @@ function syncBayonetGui() {
 }
 syncBayonetGui();
 
+// — Container folder (hidden until Mode = container) —
+// Geometry changes run CSG on a ~100k-triangle body, so edits are
+// debounced: the rebuild starts when the slider stops moving.
+const fCo = gui.addFolder('Container');
+let conTimer = null;
+const conGo = () => {
+  clearTimeout(conTimer);
+  conTimer = setTimeout(scheduleRebuild, 250);
+};
+
+const fCoSize = fCo.addFolder('Size');
+fCoSize.add(CP, 'solve', {
+  'Calculate the height  (volume + radius)': 'height',
+  'Calculate the radius  (volume + height)': 'radius',
+  'Calculate the volume  (radius + height)': 'volume',
+}).name('Calculate').onChange(() => { syncContainerGui(); conGo(); });
+conSizeCtls = [
+  fCoSize.add(CP, 'volume', 20, 3000, 5).name('Volume (mL)').onChange(conGo),
+  fCoSize.add(CP, 'radius', 10, 150, 0.5).name('Inner radius (mm)').onChange(conGo),
+  fCoSize.add(CP, 'height', 15, 400, 0.5).name('Inner height (mm)').onChange(conGo),
+];
+fCoSize.add(CP, 'wall', 1.2, 6, 0.1).name('Wall (mm)').onChange(conGo);
+fCoSize.add(CP, 'floor_t', 1.2, 8, 0.1).name('Floor (mm)').onChange(conGo);
+fCoSize.add(CP, 'lid_t', 3, 15, 0.5).name('Lid thickness (mm)').onChange(conGo);
+fCoSize.add(CP, 'fillet', 0, 20, 0.5).name('Inside fillet (mm, 0 = sharp)').onChange(conGo);
+
+const fCoPat = fCo.addFolder('Outside pattern');
+fCoPat.add(CP, 'pattern', CON_PATTERNS).name('Pattern').onChange(conGo);
+fCoPat.add(CP, 'pattern_amp', 0, 3, 0.1).name('Height of bumps (mm)').onChange(conGo);
+fCoPat.add(CP, 'pattern_count', 4, 48, 1).name('Repeats around').onChange(conGo);
+fCoPat.add(CP, 'pattern_pitch', 3, 40, 0.5).name('Vertical repeat (mm)').onChange(conGo);
+fCoPat.add(CP, 'pattern_fade', 1, 30, 0.5).name('Ease in/out over (mm)').onChange(conGo);
+
+const fCoKn = fCo.addFolder('Knurl (grip)');
+fCoKn.add(CP, 'knurl', {
+  'Off': 'off', 'Lid edge': 'lid', 'Band at the bottom of the jar': 'body', 'Lid + jar band': 'both',
+}).name('Knurl').onChange(conGo);
+fCoKn.add(CP, 'knurl_pitch', 1.2, 5, 0.1).name('Ridge spacing (mm)').onChange(conGo);
+fCoKn.add(CP, 'knurl_depth', 0.2, 1.2, 0.05).name('Ridge height (mm)').onChange(conGo);
+fCoKn.add(CP, 'knurl_h', 4, 40, 1).name('Jar band height (mm)').onChange(conGo);
+
+const fCoMag = fCo.addFolder('Magnet bayonet');
+fCoMag.add(CP, 'direction', { 'Right — clockwise to lock': 'right', 'Left — counter-clockwise': 'left' })
+  .name('Direction').onChange(conGo);
+fCoMag.add(CP, 'magnet_d', 2, 20, 0.5).name('Magnet diameter (mm)').onChange(conGo);
+fCoMag.add(CP, 'magnet_h', 1, 10, 0.5).name('Magnet thickness (mm)').onChange(conGo);
+fCoMag.add(CP, 'fit', 0, 1, 0.05).name('Pocket oversize (mm)').onChange(conGo);
+fCoMag.add(CP, 'ribs', 0, 8, 1).name('Press-fit ribs (0 = none)').onChange(conGo);
+fCoMag.add(CP, 'crush', 0, 0.4, 0.01).name('Rib bite into magnet (mm)').onChange(conGo);
+fCoMag.add(CP, 'mwall', 0.8, 3, 0.1).name('Plastic around magnet').onChange(conGo);
+fCoMag.add(CP, 'teeth', 0, 8, 1).name('Pins (0 = auto)').onChange(conGo);
+fCoMag.add(CP, 'clearance', 0, 0.6, 0.05).name('Print clearance (mm)').onChange(conGo);
+fCoMag.add(CP, 'chamfer', 0, 3, 0.1).name('Bottom edge chamfer (mm)').onChange(conGo);
+
+const fCoView = fCo.addFolder('Preview');
+fCoView.add(BV, 'view', {
+  'Assembled — drag the slider': 'assembled',
+  'Print layout (what is exported)': 'print',
+}).name('Show').onChange(() => { syncBayonetGui(); scheduleRebuild(); });
+fCoView.add(BV, 'engage', 0, 1, 0.005).name('Lid  (0 lifted → 1 locked)').onChange(scheduleRebuild);
+fCoView.add(CV, 'section').name('Half-section (see the inside)').onChange(scheduleRebuild);
+fCoView.add(BV, 'ghost').name('See-through').onChange(scheduleRebuild);
+fCoView.add(BV, 'magnets').name('Show magnets (N red / S blue)').onChange(scheduleRebuild);
+
+const fCoCalc = fCo.addFolder('Calculated');
+for (const [k, label] of [['size', 'Capacity'], ['outer', 'Jar'], ['lid', 'Lid'],
+    ['fillet', 'Inside fillet'], ['pattern', 'Texture'], ['magnets', 'Magnets'],
+    ['travel', 'Travel'], ['strength', 'Strength'], ['note', 'Check']])
+  conCalcCtrls.push(fCoCalc.add(CPC, k).name(label).disable());
+
+// the quantity being calculated is read-only; the other two are yours
+function syncContainerGui() {
+  conSizeCtls.forEach(c => CP.solve === c.property ? c.disable() : c.enable());
+}
+syncContainerGui();
+
 // ── Add-printer dialog ──────────────────────────────────────
 const plateDialog = document.getElementById('modal-plate');
 const plateForm   = document.getElementById('plate-form');
@@ -2202,10 +2420,12 @@ const ONEWALL_FOLDERS = [fOuter, fSec, fLow, fMid, fTex, fWave, fLip, fRes];
 function applyMode() {
   const gf = MODE.mode === 'gridfinity';
   const by = MODE.mode === 'bayonet';
-  ONEWALL_FOLDERS.forEach(f => (gf || by) ? f.hide() : f.show());
+  const co = MODE.mode === 'container';
+  ONEWALL_FOLDERS.forEach(f => (gf || by || co) ? f.hide() : f.show());
   gf ? fGf.show() : fGf.hide();
   by ? fBy.show() : fBy.hide();
-  if (expStlCtl) expStlCtl.name(by ? 'Download STL (print layout)' : 'Download STL (engraved)');
+  co ? fCo.show() : fCo.hide();
+  if (expStlCtl) expStlCtl.name(by || co ? 'Download STL (print layout)' : 'Download STL (engraved)');
   tabsEl.querySelectorAll('a').forEach(b =>
     b.setAttribute('aria-selected', String(b.dataset.mode === MODE.mode)));
   modeCtl.updateDisplay();
@@ -2215,6 +2435,7 @@ function applyMode() {
 }
 fGf.hide();
 fBy.hide();
+fCo.hide();
 { MODE.mode = modeFromHash() || MODE.mode;
   const t = window.owTrack; window.owTrack = null; applyMode(); window.owTrack = t; } // initial tab state, not a user switch
 
@@ -2266,6 +2487,7 @@ function snapshotSession() {
     params:   { ...P },
     gridfinity: { ...GP },
     bayonet: { ...BP, view: BV.view, engage: BV.engage },
+    container: { ...CP },
     printer: { ...PRINTER },
     // Carried along so a session that selects a custom printer still
     // resolves it on a machine that has never cached that printer.
@@ -2336,7 +2558,13 @@ function restoreSession(data) {
     }
     refreshPrinterList();
   }
-  if (data.mode === 'onewall' || data.mode === 'gridfinity' || data.mode === 'bayonet') {
+  if (data.container) {
+    for (const k of Object.keys(CP))
+      if (k in data.container) CP[k] = data.container[k];
+    fCo.controllersRecursive().forEach(c => c.updateDisplay());
+    syncContainerGui();
+  }
+  if (data.mode === 'onewall' || data.mode === 'gridfinity' || data.mode === 'bayonet' || data.mode === 'container') {
     MODE.mode = data.mode;
     applyMode();
   }
@@ -2467,10 +2695,11 @@ function makeSigCarveGeometry() {
 async function prepareExportRoot(fmt) {
   // Bayonet parts go out exactly as laid out on the bed: no signature,
   // no carve. The geometries are clones — the caller disposes them.
-  if (MODE.mode === 'bayonet') {
+  if (MODE.mode === 'bayonet' || MODE.mode === 'container') {
     const root = new THREE.Group();
     const owned = [];
-    for (const p of bayPrintParts(getBayonet()).parts) {
+    const built = MODE.mode === 'container' ? getContainer() : getBayonet();
+    for (const p of bayPrintParts(built).parts) {
       const m = new THREE.Mesh(p.geom, material);
       m.name = p.name;
       root.add(m);
@@ -2560,6 +2789,12 @@ function exportBaseName() {
   // Fractional cell counts carry float noise from the slider — trim
   // them so the filename reads 3.5, not 3.5000000000000004.
   const num = v => String(+(+v).toFixed(2));
+  if (MODE.mode === 'container') {
+    const b = getContainer().plan.box;
+    return `container_${num(b.volume)}ml_d${num(2 * b.radius)}x${num(b.height)}`
+      + `_${b.pattern}${CP.knurl !== 'off' ? '_knurl' : ''}`
+      + `_m${num(CP.magnet_d)}x${num(CP.magnet_h)}` + (CP.direction === 'left' ? '_L' : '_R');
+  }
   if (MODE.mode === 'bayonet') {
     const plan = getBayonet().plan;
     const sz = plan.round ? `d${num(BP.dia)}`
@@ -2696,7 +2931,7 @@ async function export3MF() {
 }
 
 expStlCtl = gui.add({ exportSTL }, 'exportSTL').name('Download STL (engraved)');
-if (MODE.mode === 'bayonet') expStlCtl.name('Download STL (print layout)');
+if (MODE.mode === 'bayonet' || MODE.mode === 'container') expStlCtl.name('Download STL (print layout)');
 gui.add({ exportStepFile }, 'exportStepFile').name('Download STEP (faceted)');
 gui.add({ export3MF }, 'export3MF').name('Download 3MF (mm, multi-part)');
 

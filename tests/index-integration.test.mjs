@@ -167,5 +167,28 @@ ok(/finally \{\s*disposeExportRoot\(prep\);[\s\S]{0,40}\}\s*\}\s*\n\s*gui\.add\(
    || (js.match(/finally \{\s*disposeExportRoot\(prep\);/g) || []).length === 2,
    '3MF export disposes carved geometry even when the write throws');
 
+
+// 8. Container tab — wiring
+console.log('8. container tab');
+ok(/from '\.\/assets\/container\.js'/.test(js) && /buildContainer/.test(js), 'imports ./assets/container.js');
+ok(/id: 'container', label: 'Container'/.test(js), 'Container tab registered');
+ok(/const CP = \{ \.\.\.CONTAINER_DEFAULTS \}/.test(js), 'CP state mirrors the module defaults');
+ok(/MODE\.mode === 'container'\) \{\s*try \{\s*const r = rebuildContainer\(\)/.test(js), 'rebuild() branches to the container');
+ok(/add\(CP, 'solve'/.test(js) && /add\(CP, 'volume'/.test(js) && /add\(CP, 'radius'/.test(js) && /add\(CP, 'height'/.test(js),
+   'volume / radius / height controls with a calculate switch');
+ok(/add\(CP, 'pattern', CON_PATTERNS\)/.test(js) && /add\(CP, 'knurl'/.test(js), 'pattern and knurl controls present');
+ok(/add\(CP, 'fillet'/.test(js), 'inside fillet control present');
+ok(/filter\(k => k !== CP\.solve\)/.test(js), 'the calculated value is left out of the cache key');
+ok(/container: \{ \.\.\.CP \}/.test(js) && /data\.container/.test(js), 'session saves and restores the container');
+ok(/MODE\.mode === 'container' \? getContainer\(\) : getBayonet\(\)/.test(js), 'exports use the container parts');
+ok(/container_\$\{num\(b\.volume\)\}ml/.test(js), 'STL filename encodes volume and size');
+
+// Container sessions must restore the calculated-field lock as well as values.
+ok(/from '\.\/assets\/container\.js'/.test(js), 'imports container geometry');
+ok(/id: 'container',\s+label: 'Container'/.test(js), 'Container has a direct mode tab');
+ok(/container: \{ \.\.\.CP \}/.test(js), 'session stores container parameters');
+ok(/if \(data\.container\) \{[\s\S]*?syncContainerGui\(\);/.test(js),
+   'container session restore updates the calculated-field lock');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
