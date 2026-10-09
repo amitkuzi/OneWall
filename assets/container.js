@@ -54,6 +54,9 @@ export const CONTAINER_DEFAULTS = {
   lid_text_size: 10,        // letter height, mm (shrinks to fit the lid)
   lid_text_depth: 0.6,      // mm
   lid_text_mode: 'engrave', // engrave | recess (raised letters inside a shallow recessed disc)
+  // — airtight seal: hollow stopper under the lid with an O-ring groove —
+  seal: true,
+  oring_d: 1.5,             // O-ring cord diameter, mm (silicone, food grade)
   // — closure: how the lid joins the jar —
   closure: 'plug',          // plug = male+female, closed | twin = two identical hook halves + skirt
   // — bayonet (magnet) —
@@ -130,12 +133,34 @@ export function connectorPlan(o, r) {
 
 // What the narrow neck takes away from the plain r × h cylinder: the 45°
 // shoulder plus the bore above it, up to the underside of the closed lid.
-export function neckLoss(plan, r) {
-  const { rb, T, zFlip } = plan, d = Math.max(0, r - rb);
-  return Math.PI * r * r * d - Math.PI * d / 3 * (r * r + r * rb + rb * rb)
-       + Math.PI * (r * r - rb * rb) * (zFlip + T);
+export function neckLoss(plan, r, sd) {
+  const { rb, T, zFlip } = plan, d = Math.max(0, r - sd.rbN);
+  const bore = Math.PI * r * r * d - Math.PI * d / 3 * (r * r + r * sd.rbN + sd.rbN * sd.rbN)
+             + Math.PI * (r * r - sd.rbN * sd.rbN) * (zFlip + T);
+  // the hollow stopper hangs into the bore and takes its wall's volume
+  const stopper = sd.on ? Math.PI * (rb * rb - (rb - sd.tw) ** 2) * sd.Ls : 0;
+  return bore + stopper;
 }
-const capOf = (o, r, h) => capacityMm3(r, h, rfFor(o, r, h), neckLoss(connectorPlan(o, r), r));
+
+// Airtight seal. A hollow stopper hangs under the lid into the round neck of
+// the jar; an O-ring in a groove on it presses RADIALLY against the neck wall
+// (clearance c, squeezed ~20 %), so the few tenths of a millimetre the bayonet
+// allows axially do not matter. The neck wall has no slots, so the ring is
+// continuous. rbN = neck bore, a clearance wider than the stopper.
+export function sealOf(o, plan) {
+  const wanted = !(o.seal === false || o.seal === 'off');
+  const dc = clamp(num(o.oring_d, 1.5), 1, 4);
+  const c = plan.c;
+  const g = Math.max(0.6, 0.8 * dc - c);          // groove depth: leaves 20 % squeeze after the gap c
+  const tw = Math.max(2.4, g + 1.2);              // stopper wall
+  const on = wanted && plan.rb - tw >= 4;
+  return { wanted, on, dc, g, gw: 1.3 * dc, tw, ce: 0.8,
+           rbN: on ? plan.rb + c : plan.rb,
+           Ls: plan.zFlip + plan.T - 0.8,         // stopper length below the lid's underside
+           squeeze: dc - g - c };
+}
+const lossFor = (o, r) => { const p = connectorPlan(o, r); return neckLoss(p, r, sealOf(o, p)); };
+const capOf = (o, r, h) => capacityMm3(r, h, rfFor(o, r, h), lossFor(o, r));
 
 // Solve the one quantity named by `solve` from the other two.
 export function solveDims(bp = {}) {
@@ -153,11 +178,11 @@ export function solveDims(bp = {}) {
     }
     r = (lo + hi) / 2;
   } else {
-    const loss = neckLoss(connectorPlan(o, r), r);
+    const loss = lossFor(o, r);
     for (let k = 0; k < 20; k++)                       // the fillet clamp depends on h
       h = (V + filletVolume(r, rfFor(o, r, h)) + loss) / (Math.PI * r * r);
   }
-  return { volume: V / 1000, radius: r, height: h, loss: neckLoss(connectorPlan(o, r), r) };
+  return { volume: V / 1000, radius: r, height: h, loss: lossFor(o, r) };
 }
 
 // ── Outside texture ─────────────────────────────────────────
@@ -274,6 +299,8 @@ export function buildContainer(bp = {}) {
   const cp = connectorPlan(o, r);
   const { plan, parts } = buildBayonet(bayParams(o, cp.rb));
   warnings.push(...plan.warnings);
+  const sd = sealOf(o, plan);
+  if (sd.wanted && !sd.on) warnings.push('The opening is too small for an O-ring seal — widen the jar or use smaller magnets. Built without the seal.');
 
   const { ro, rb, rfb, rmo, Hf, Hm, T, zFlip } = plan;
   const ch = Math.max(0, Math.min(plan.chamfer, T / 2, (ro - rb) / 3));
@@ -282,9 +309,9 @@ export function buildContainer(bp = {}) {
   const Rout = ro + off;                             // outside radius of the jar AND of the lid (bump peaks)
   const wall = Rout - r;                             // outside (bump peaks) − inside
   const floorT = Math.max(0.8, num(o.floor_t, 3));
-  const neckD = Math.max(0, r - rb);                 // the shoulder from the opening out to the cavity
+  const neckD = Math.max(0, r - sd.rbN);             // the shoulder from the opening out to the cavity
   const zc0 = -T - neckD;                            // where the cavity reaches its full radius
-  const loss = neckLoss(plan, r);
+  const loss = neckLoss(plan, r, sd);
 
   // floor level, floor → lid underside is `height`
   let zfl = zFlip - dims.height;
@@ -357,9 +384,9 @@ export function buildContainer(bp = {}) {
     { s: 0, z: zBot }, { s: Rw - ch, z: zBot },
     ...wallZ.map(z => ({ s: Rw, z, f: 1 })),
     ...(twin
-      ? [{ s: Rout, z: 0 }, { s: rb, z: 0 }]       // flat top: the hooks stand on it, the lid skirt lands beside them
-      : [{ s: Rout, z: zw1 + (Rout - Rw) }, { s: Rout, z: Hf }, { s: rfb, z: Hf }, { s: rfb, z: 0 }, { s: rb, z: 0 }]),
-    { s: rb, z: -T }, { s: r, z: zc0 }, { s: r, z: zfl + rfl },
+      ? [{ s: Rout, z: 0 }, { s: sd.rbN, z: 0 }]   // flat top: the hooks stand on it, the lid skirt lands beside them
+      : [{ s: Rout, z: zw1 + (Rout - Rw) }, { s: Rout, z: Hf }, { s: rfb, z: Hf }, { s: rfb, z: 0 }, { s: sd.rbN, z: 0 }]),
+    { s: sd.rbN, z: -T }, { s: r, z: zc0 }, { s: r, z: zfl + rfl },
     ...(rfl > 0.05 ? filletArc(r, zfl, rfl) : [{ s: r, z: zfl }]),
     { s: 0, z: zfl },
   ];
@@ -367,16 +394,30 @@ export function buildContainer(bp = {}) {
 
   // — lid: plate (knurled edge), bore capped. plug: hollow plug with a rounded inside;
   //   twin: a skirt around the hooks —
-  const rflLid = twin ? 0 : Math.max(0, Math.min(rf, Hm - 0.6));
+  // Stopper: the lid's underside is local z = 0, body z = zFlip − z. The groove sits
+  // at body z = −T/2, the stopper ends 0.8 above where the cavity starts to widen.
+  const zEnd = zFlip + T - 0.8, zg = zFlip + T / 2;
+  const zg0 = zg - sd.gw / 2, zg1 = zg + sd.gw / 2;
+  const rflLid = sd.on ? Math.max(0, Math.min(rf, 2, zEnd - 1))
+               : twin ? 0 : Math.max(0, Math.min(rf, Hm - 0.6));
+  const stopper = sd.on ? [
+    { s: rb, z: zg0 }, { s: rb - sd.g, z: zg0 }, { s: rb - sd.g, z: zg1 }, { s: rb, z: zg1 },   // O-ring groove
+    { s: rb, z: zEnd - sd.ce }, { s: rb - sd.ce, z: zEnd },                                   // lead-in chamfer
+    { s: rb - sd.tw, z: zEnd }, { s: rb - sd.tw, z: rflLid },
+    ...(rflLid > 0.05 ? filletArc(rb - sd.tw, 0, rflLid) : [{ s: rb - sd.tw, z: 0 }]),
+    { s: 0, z: 0 },
+  ] : null;
   const lidEdgeZ = kLid ? zRange(-T + ch, lidTop, Math.max(0.3, kPitchLid / 4)) : [-T + ch, lidTop];
   const lidProf = [
     { s: 0, z: -T }, { s: Rl - ch, z: -T },
     ...lidEdgeZ.map(z => ({ s: Rl, z, f: kLid ? 2 : 0 })),
     ...(twin
-      ? [{ s: Rout - SKIRT_T, z: lidTop }, { s: Rout - SKIRT_T, z: 0 }, { s: 0, z: 0 }]
-      : [{ s: rmo, z: 0 }, { s: rmo, z: Hm }, { s: rb, z: Hm }, { s: rb, z: rflLid },
-         ...(rflLid > 0.05 ? filletArc(rb, 0, rflLid) : [{ s: rb, z: 0 }]),
-         { s: 0, z: 0 }]),
+      ? [{ s: Rout - SKIRT_T, z: lidTop }, { s: Rout - SKIRT_T, z: 0 },
+         ...(stopper ? [{ s: rb, z: 0 }, ...stopper] : [{ s: 0, z: 0 }])]
+      : [{ s: rmo, z: 0 }, { s: rmo, z: Hm }, { s: rb, z: Hm },
+         ...(stopper || [{ s: rb, z: rflLid },
+           ...(rflLid > 0.05 ? filletArc(rb, 0, rflLid) : [{ s: rb, z: 0 }]),
+           { s: 0, z: 0 }])]),
   ];
   const lidMesh = revolve(dedupe(lidProf), M, lidDisp);
 
@@ -388,7 +429,8 @@ export function buildContainer(bp = {}) {
   const box = {
     ...dims, volume: capacity, radius: r, height: hIn, solved: o.solve,
     wall, Rw, floorT, lidT: T, rf, rfl, rflLid, neckD, zfl, zBot, zc0, loss,
-    outerD: 2 * Rout, flangeD: 2 * Rout, lidD: 2 * Rout, openD: 2 * rb, closure: twin ? 'twin' : 'plug',
+    outerD: 2 * Rout, flangeD: 2 * Rout, lidD: 2 * Rout, openD: 2 * sd.rbN,
+    seal: sd.on ? { dc: sd.dc, g: sd.g, gw: sd.gw, tw: sd.tw, squeeze: sd.squeeze, ringID: 2 * (rb - sd.g) * 0.97, grooveD: 2 * (rb - sd.g) } : null, closure: twin ? 'twin' : 'plug',
     bodyH: (twin ? 0 : Hf) - zBot, totalH: zFlip + T - zBot,
     pattern: kind, M, K,
     wallVolume: 0,

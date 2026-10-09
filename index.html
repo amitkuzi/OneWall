@@ -322,7 +322,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Containers &amp; Gridfinity Bins / Baseplates</span>
-    <span class="ver">v0.1-1009-002824</span>
+    <span class="ver">v0.1-1009-104945</span>
   </div>
   <div id="mode-tabs" role="tablist" aria-label="Mode"></div>
   <nav>
@@ -452,6 +452,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <tr><td>Outside pattern</td><td><em>flutes</em>, <em>rings</em>, <em>diamond</em>, <em>hex</em> domes, <em>spiral</em> or smooth. Bumps only grow outward from the wall, so a pattern never thins it. It eases out near the flange and the base.</td></tr>
       <tr><td>Knurl</td><td>Crossed diamond ridges for grip, on the lid edge, in a band at the bottom of the jar, or both. On very wide jars the ridges get coarser to keep the model printable.</td></tr>
       <tr><td>Magnet bayonet</td><td>Magnet size, press-fit ribs, pins and twist direction — same as the Bayonet tab. The socket is a flange wider than the wall, so the lid is wider than the jar; a bigger magnet means a wider flange. A volume too small for the connector is flagged and the jar is made as small as it can be.</td></tr>
+      <tr><td>Airtight seal</td><td>A hollow stopper hangs under the lid into the round neck of the jar, with a groove for a <strong>silicone O-ring</strong> (cord diameter and inside diameter are shown under Calculated). The ring presses sideways against the neck wall by about 20 %, so it does not depend on how tightly the bayonet pulls the lid down. Printed walls are porous: coat the inside of the jar and the stopper with the food-grade resin, print in PETG/ASA with 100 % perimeters, and test with water before storing food. Works with both closures.</td></tr>
       <tr><td>Lid text</td><td>Any text on the outer face of the lid, read from above on the closed jar (shrinks to fit). <em>Engraved</em> cuts the letters in; <em>raised in a recessed disc</em> leaves the letters standing inside a shallow disc, flush with the lid face — raised letters on the face itself would have to print into the bed. The lid prints face-down, so keep the depth at 0.4 mm or more.</td></tr>
       <tr><td>Preview</td><td>Assembled with a lid slider (lifted → locked), or the print layout: lid plate-down, jar upright, exactly what the STL / STEP / 3MF contains. Edits rebuild a moment after you stop moving a slider.</td></tr>
     </table>
@@ -699,6 +700,15 @@ import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh
 import { BAYONET_DEFAULTS, GEOMETRY_KEYS as BAYONET_KEYS,
          buildBayonet, magnetCount }
   from './assets/bayonet.js';
+// Manifold — exact booleans whose output is always a closed solid. The
+// container is built with it: three-bvh-csg leaves cracks along the cuts
+// (thousands of open edges), which slicers report as STL errors. Loaded
+// without blocking; until it arrives (or if it cannot load) the container
+// falls back to three-bvh-csg.
+let MF = null;
+import('https://cdn.jsdelivr.net/npm/manifold-3d@3.5.4/manifold.js')
+  .then(async m => { const w = await m.default(); w.setup(); MF = w; scheduleRebuild(); })
+  .catch(e => console.warn('OneWall: manifold-3d unavailable — using three-bvh-csg (STL may need repair)', e));
 // Container with a magnet-bayonet lid — builds on the bayonet module
 import { CONTAINER_DEFAULTS, CONTAINER_KEYS, PATTERNS as CON_PATTERNS,
          buildContainer }
@@ -789,7 +799,7 @@ const BPC = { teeth: '', tooth_w: '', tooth_t: '', foot: '', stack: '',
 // so the view/engage/see-through flags are shared with BV.
 const CP = { ...CONTAINER_DEFAULTS };
 const CV = { section: false };
-const CPC = { size: '', outer: '', lid: '', fillet: '', pattern: '', magnets: '',
+const CPC = { size: '', outer: '', lid: '', fillet: '', seal: '', engine: '', pattern: '', magnets: '',
               travel: '', strength: '', note: '' };
 
 // ── Printer / build plate ───────────────────────────────────
@@ -1744,12 +1754,13 @@ async function thicknessColors(geom, partNo, nParts) {
 // sliders to show, so it must not be part of the key.
 let conCache = null;
 function getContainer() {
-  const key = JSON.stringify([...CONTAINER_KEYS.filter(k => k !== CP.solve).map(k => CP[k]), !!svaseFont]);
+  const key = JSON.stringify([...CONTAINER_KEYS.filter(k => k !== CP.solve).map(k => CP[k]), !!svaseFont, !!MF]);
   if (conCache && conCache.key === key) return conCache.built;
   const { plan, parts } = buildContainer(CP);
   const textCuts = lidTextCutters(plan);
   if (textCuts.length) parts[0].cuts = [...parts[0].cuts, ...textCuts];
-  const solid = parts.map(p => ({ ...p, geom: solidifyBayonetPart(p) }));
+  const solid = parts.map(p => ({ ...p, geom: solidifyContainerPart(p) }));
+  plan.engine = MF ? 'manifold' : 'three-bvh-csg';
   if (conCache) conCache.built.parts.forEach(p => p.geom.dispose());
   conCache = { key, built: { plan, parts: solid } };
   return conCache.built;
@@ -1764,6 +1775,47 @@ function geomToMesh(g) {
   const n = pos.length / 3;
   return { p: Array.from(pos), i: g.index ? Array.from(g.index.array) : Array.from({ length: n }, (_, k) => k) };
 }
+// { p, i } -> Manifold. Every Manifold made is pushed on `keep`; the caller frees them.
+function mfFrom(m, keep) {
+  const mesh = new MF.Mesh({ numProp: 3, vertProperties: Float32Array.from(m.p), triVerts: Uint32Array.from(m.i) });
+  mesh.merge();
+  const x = new MF.Manifold(mesh);
+  keep.push(x);
+  return x;
+}
+function mfToGeom(man) {
+  const mesh = man.getMesh();
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(Float32Array.from(mesh.vertProperties), 3));
+  g.setIndex(new THREE.BufferAttribute(Uint32Array.from(mesh.triVerts), 1));
+  return g;
+}
+// body + pins - pockets/slots/text with Manifold. Every triangle that meets at a
+// corner shares the exact same position, so the STL welds without any tolerance.
+function solidifyManifold(part) {
+  const keep = [];
+  try {
+    const k = x => (keep.push(x), x);
+    let cur = mfFrom(part.body, keep);
+    if (part.add) cur = k(cur.add(mfFrom(part.add, keep)));
+    for (const cut of part.cuts) cur = k(cur.subtract(mfFrom(cut, keep)));
+    const g = mfToGeom(cur).toNonIndexed();
+    g.computeVertexNormals();
+    g.computeBoundingBox();
+    return g;
+  } finally { keep.forEach(x => x.delete()); }
+}
+function solidifyContainerPart(part) {
+  if (MF) {
+    try { return solidifyManifold(part); }
+    catch (e) { console.warn('OneWall: manifold failed on ' + part.name + ' — falling back to three-bvh-csg', e); }
+  }
+  return solidifyBayonetPart(part);
+}
+
+// One closed solid per glyph (outline + holes), so the letters are valid input for
+// exact booleans. TextGeometry is a loose soup that three-bvh-csg misread: the
+// engraving cut straight through the lid.
 function lidTextCutters(plan) {
   const text = (CP.lid_text || '').trim();
   if (!text || !svaseFont) return [];
@@ -1771,28 +1823,53 @@ function lidTextCutters(plan) {
   const depth = Math.max(0.2, CP.lid_text_depth), m = 0.4;      // m: overshoot below the face
   const recess = CP.lid_text_mode === 'recess';
   const zLo = -T - m, zHi = -T + depth + (recess ? 0.2 : 0);
-  let tg = new TextGeometry(text, { font: svaseFont, size: CP.lid_text_size, depth: zHi - zLo,
-                                    curveSegments: 6, bevelEnabled: false });
-  tg.center();
-  tg.computeBoundingBox();
-  const w = tg.boundingBox.max.x - tg.boundingBox.min.x, h = tg.boundingBox.max.y - tg.boundingBox.min.y;
+  const gs = svaseFont.generateShapes(text, CP.lid_text_size).map(sh => {
+    const g = new THREE.ExtrudeGeometry(sh, { depth: zHi - zLo, bevelEnabled: false, curveSegments: 6 });
+    g.deleteAttribute('normal'); g.deleteAttribute('uv');        // weld on position alone
+    return mergeVertices(g, 1e-6);
+  });
+  if (!gs.length) return [];
+  const box = new THREE.Box3();
+  gs.forEach(g => { g.computeBoundingBox(); box.union(g.boundingBox); });
+  const w = box.max.x - box.min.x, h = box.max.y - box.min.y;
   const Rpl = b.outerD / 2 - 3;                                // flat face of the lid, less its edge
   const k = Math.min(1, (2 * Rpl - 4) / Math.max(1e-6, Math.hypot(w, h)));
-  tg.scale(k, k, 1);
-  tg.rotateX(Math.PI);
-  tg.translate(0, 0, (zLo + zHi) / 2);
-  try { tg = mergeVertices(tg, 1e-4); tg.computeVertexNormals(); } catch (e) { console.warn('OneWall: lid text mergeVertices failed', e); }
-  if (!recess) return [geomToMesh(tg)];
-  // recess: cut a shallow disc, but leave the letters standing in it
-  const Rd = Math.min(Rpl, Math.hypot(w, h) * k / 2 + 2);
-  const dg = new THREE.CylinderGeometry(Rd, Rd, depth + m, 72);
-  dg.rotateX(Math.PI / 2);
-  dg.translate(0, 0, (-T - m + (-T + depth)) / 2);
+  gs.forEach(g => {
+    g.translate(-(box.min.x + box.max.x) / 2, -(box.min.y + box.max.y) / 2, -(zHi - zLo) / 2);
+    g.scale(k, k, 1);
+    g.rotateX(Math.PI);                                       // reads from above on the closed jar
+    g.translate(0, 0, (zLo + zHi) / 2);
+  });
+  const Rd = Math.min(Rpl, Math.hypot(w, h) * k / 2 + 2);     // recess disc
+  const zDisc = [-T - m, -T + depth];
+  if (MF) {
+    const keep = [];
+    try {
+      let txt = MF.Manifold.union(gs.map(g => mfFrom(geomToMesh(g), keep)));
+      keep.push(txt);
+      if (recess) {
+        // disc minus the letters: cutting it leaves the letters standing in a shallow recess
+        const disc = MF.Manifold.cylinder(zDisc[1] - zDisc[0], Rd, Rd, 72, false).translate([0, 0, zDisc[0]]);
+        keep.push(disc);
+        txt = disc.subtract(txt);
+        keep.push(txt);
+      }
+      const mesh = txt.getMesh();
+      return [{ p: Array.from(mesh.vertProperties), i: Array.from(mesh.triVerts) }];
+    } finally { keep.forEach(x => x.delete()); }
+  }
+  if (!recess) return gs.map(geomToMesh);
   const ev = new Evaluator();
   ev.useGroups = false; ev.attributes = ['position', 'normal'];
-  const db = new Brush(dg); db.updateMatrixWorld();
-  const tb = new Brush(tg); tb.updateMatrixWorld();
-  return [geomToMesh(ev.evaluate(db, tb, SUBTRACTION).geometry)];
+  const dg = new THREE.CylinderGeometry(Rd, Rd, zDisc[1] - zDisc[0], 72);
+  dg.rotateX(Math.PI / 2);
+  dg.translate(0, 0, (zDisc[0] + zDisc[1]) / 2);
+  let cur = new Brush(dg); cur.updateMatrixWorld();
+  for (const g of gs) {
+    const tb = new Brush(g); tb.updateMatrixWorld();
+    cur = ev.evaluate(cur, tb, SUBTRACTION); cur.updateMatrixWorld();
+  }
+  return [geomToMesh(cur.geometry)];
 }
 
 const CON_CLIP = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);   // keeps y ≥ 0: a half-section
@@ -1863,6 +1940,10 @@ function refreshContainerCalc(plan, mc) {
   CPC.outer   = `⌀${f1(b.outerD)} outside (jar = lid) · opening ⌀${f1(b.openD)} · ${f1(b.bodyH)} mm body`;
   CPC.lid     = `⌀${f1(b.lidD)} × ${f1(b.lidT)} mm plate · ${f1(b.totalH)} mm closed`;
   CPC.fillet  = b.rf > 0 ? `R${f1(b.rf)} floor, R${f1(b.rflLid)} lid — no sharp inside corner` : 'none — sharp corners';
+  CPC.seal    = b.seal
+    ? `silicone O-ring, ${f1(b.seal.dc)} mm cord, ⌀${f1(b.seal.ringID)} inside, ${Math.round(100 * b.seal.squeeze / b.seal.dc)} % squeeze`
+    : 'none — not airtight';
+  CPC.engine  = plan.engine === 'manifold' ? 'closed solids (no STL repair needed)' : '⚠ fallback CSG — STL may need repair';
   CPC.pattern = `${b.pattern}${b.K ? ` + knurl ${b.K} ridges` : ''} · ${b.M} samples/ring`;
   CPC.magnets = `${mc.total} × ⌀${plan.magnet.d}×${plan.magnet.h} mm (${plan.N} pins)`;
   CPC.travel  = `${f1(Math.abs(plan.beta1 - plan.beta0) / plan.rRef * 180 / Math.PI)}° twist to lock`;
@@ -2381,6 +2462,11 @@ fCoKn.add(CP, 'knurl_pitch', 1.2, 5, 0.1).name('Ridge spacing (mm)').onChange(co
 fCoKn.add(CP, 'knurl_depth', 0.2, 1.2, 0.05).name('Ridge height (mm)').onChange(conGo);
 fCoKn.add(CP, 'knurl_h', 4, 40, 1).name('Jar band height (mm)').onChange(conGo);
 
+const fCoSeal = fCo.addFolder('Airtight seal');
+fCoSeal.add(CP, 'seal').name('O-ring seal (air + water)').onChange(conGo);
+fCoSeal.add(CP, 'oring_d', { '1.0 mm cord': 1, '1.5 mm cord': 1.5, '2.0 mm cord': 2, '2.5 mm cord': 2.5, '3.0 mm cord': 3 })
+  .name('O-ring cord').onChange(conGo);
+
 const fCoMag = fCo.addFolder('Magnet bayonet');
 fCoMag.add(CP, 'closure', {
   'Plug — male + female, closed (recommended)': 'plug',
@@ -2419,7 +2505,7 @@ fCoView.add(BV, 'magnets').name('Show magnets (N red / S blue)').onChange(schedu
 
 const fCoCalc = fCo.addFolder('Calculated');
 for (const [k, label] of [['size', 'Capacity'], ['outer', 'Jar'], ['lid', 'Lid'],
-    ['fillet', 'Inside fillet'], ['pattern', 'Texture'], ['magnets', 'Magnets'],
+    ['fillet', 'Inside fillet'], ['seal', 'Seal'], ['engine', 'Geometry'], ['pattern', 'Texture'], ['magnets', 'Magnets'],
     ['travel', 'Travel'], ['strength', 'Strength'], ['note', 'Check']])
   conCalcCtrls.push(fCoCalc.add(CPC, k).name(label).disable());
 
