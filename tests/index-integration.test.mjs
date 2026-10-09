@@ -183,8 +183,8 @@ ok(/container: \{ \.\.\.CP \}/.test(js) && /data\.container/.test(js), 'session 
 ok(/MODE\.mode === 'container' \? getContainer\(\) : getBayonet\(\)/.test(js), 'exports use the container parts');
 ok(/container_\$\{num\(b\.volume\)\}ml/.test(js), 'STL filename encodes volume and size');
 ok(js.includes('function lidTextCutters(plan)') && js.includes("add(CP, 'lid_text')"), 'lid text: cutter builder and GUI field present');
-ok(js.includes('!!svaseFont]);'), 'lid text: cache key rebuilds when the font finishes loading');
-ok(js.includes('tg.rotateX(Math.PI)'), 'lid text: rotated about X so it reads from above on the closed jar');
+ok(js.includes('!!svaseFont, !!MF]);'), 'lid text: cache key rebuilds when the font or the geometry engine finishes loading');
+ok(js.includes('g.rotateX(Math.PI)'), 'lid text: rotated about X so it reads from above on the closed jar');
 
 // Container sessions must restore the calculated-field lock as well as values.
 ok(/from '\.\/assets\/container\.js'/.test(js), 'imports container geometry');

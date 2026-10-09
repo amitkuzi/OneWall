@@ -101,6 +101,8 @@ const CASES = [
   { pattern: 'hex', pattern_count: 18, knurl: 'both' },
   { pattern: 'spiral', pattern_count: 12, knurl: 'off', fillet: 0 },
   { solve: 'radius', volume: 800, height: 120, radius: 40, magnet_d: 8, magnet_h: 3 },
+  { seal: false },
+  { closure: 'twin', oring_d: 2.5, volume: 500 },
   { closure: 'twin' },
   { closure: 'twin', pattern: 'diamond', knurl: 'both', direction: 'left', magnet_d: 5, magnet_h: 2 },
   { closure: 'twin', solve: 'radius', volume: 600, height: 110 },
@@ -156,6 +158,26 @@ console.log('5. size honoured');
   // the inside never moves: smallest radius of any vertex above the floor fillet is the bore
   const inner = m => { let v = 1e9; for (let k = 0; k < m.p.length; k += 3) if (m.p[k + 2] > -1) v = Math.min(v, Math.hypot(m.p[k], m.p[k + 1])); return v; };
   ok(near(inner(fl), inner(flat), 1e-6), 'inner wall is identical with and without the pattern');
+}
+
+// ── 6. airtight seal ────────────────────────────────────────
+console.log('6. seal');
+{
+  for (const closure of ['plug', 'twin']) {
+    const { plan } = buildContainer({ closure });
+    const s = plan.box.seal;
+    ok(!!s, closure + ': O-ring seal on by default');
+    ok(near(s.squeeze / s.dc, 0.2, 0.02), closure + ': groove gives ~20 % O-ring squeeze (' + (100 * s.squeeze / s.dc).toFixed(0) + ' %)');
+    ok(near(plan.box.openD / 2 - plan.rb, plan.c, 1e-9), closure + ': the neck bore is one clearance wider than the stopper');
+    ok(s.tw - s.g >= 1.2 - 1e-9, closure + ': stopper wall under the groove keeps >= 1.2 mm');
+    ok(s.ringID > 10 && s.ringID < 2 * plan.rb, closure + ': O-ring inside diameter is reported (' + s.ringID.toFixed(1) + ' mm)');
+  }
+  ok(buildContainer({ seal: false }).plan.box.seal === null, 'seal can be turned off');
+  const on = buildContainer({ volume: 300, radius: 30 }).plan.box, off = buildContainer({ volume: 300, radius: 30, seal: false }).plan.box;
+  ok(near(on.volume, 300, 0.01) && near(off.volume, 300, 0.01), 'capacity is 300 mL with and without the seal (the stopper is counted)');
+  ok(on.height > off.height - 3 && on.height < off.height + 10, 'the stopper costs only a few mm of height');
+  const tiny = buildContainer({ radius: 12, volume: 60 });
+  ok(tiny.plan.box.seal === null && tiny.plan.warnings.some(w => /too small for an O-ring/.test(w)), 'an opening too small for a seal is flagged and built without');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
