@@ -133,6 +133,24 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     font-family: inherit; text-decoration: none; line-height: 1.5;
   }
   #header button.nav:hover, #header a.nav:hover { border-color: var(--accent); color: var(--accent); }
+  .menu { position: relative; }
+  #header button.nav.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+  .menu-list {
+    display: none; position: absolute; right: 0; top: calc(100% + 6px); min-width: 250px; z-index: 50;
+    background: var(--header-bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  .menu.open .menu-list { display: block; }
+  .menu-list button, .menu-check {
+    display: flex; gap: 8px; align-items: flex-start; width: 100%; text-align: left; cursor: pointer;
+    background: transparent; border: 0; color: var(--fg); padding: 7px 10px; border-radius: 5px;
+    font: inherit; font-size: 12px;
+  }
+  .menu-list button:hover, .menu-check:hover { background: rgba(127,127,127,.18); }
+  .menu-list b { display: block; font-weight: 600; }
+  .menu-list small { display: block; color: var(--muted); font-size: 11px; }
+  .menu-list hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+  .menu-check input { margin-top: 2px; }
   #header .lang {
     min-width: 44px; font-variant: small-caps;
   }
@@ -326,6 +344,23 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   </div>
   <div id="mode-tabs" role="tablist" aria-label="Mode"></div>
   <nav>
+    <div class="menu" id="menu-file">
+      <button class="nav" aria-haspopup="true">File ▾</button>
+      <div class="menu-list" role="menu">
+        <button id="mi-save" role="menuitem"><b>Save session</b><small>JSON — every slider</small></button>
+        <button id="mi-load" role="menuitem"><b>Load session</b><small>JSON</small></button>
+      </div>
+    </div>
+    <div class="menu" id="menu-export">
+      <button class="nav primary" aria-haspopup="true">Export ▾</button>
+      <div class="menu-list" role="menu">
+        <label class="menu-check"><input type="checkbox" id="mi-sealed"> <span><b>Sealed — no text / signature</b><small>Plain part, no engraving; airtight container</small></span></label>
+        <hr>
+        <button id="mi-stl" role="menuitem"><b>Download STL</b><small>Print-ready mesh</small></button>
+        <button id="mi-step" role="menuitem"><b>Download STEP (faceted)</b><small>For CAD</small></button>
+        <button id="mi-3mf" role="menuitem"><b>Download 3MF</b><small>mm, multi-part</small></button>
+      </div>
+    </div>
     <button class="nav" id="btn-help" data-i18n="nav.help">Help</button>
     <button class="nav" id="btn-about" data-i18n="nav.about">About</button>
     <a class="nav" href="about.html">Docs</a>
@@ -753,6 +788,8 @@ const P = {
   point_spacing: 2.2, mesh_layer: 1.4,
   // Signature engraving (bottom of bin) — depth = 1 layer (0.2 mm) by default
   sig_enabled: true, sig_text: '@Amitkuzi', sig_size: 6, sig_depth: 0.2,
+  // Sealed: no signature and no lid text anywhere — a plain, airtight part.
+  sealed: false,
 };
 
 // ── Gridfinity Creator state ────────────────────────────────
@@ -1216,7 +1253,7 @@ new FontLoader().load(
 // below z=0 so it visually sits as a stamp under the bin's floor.
 // STL export keeps it as a separate solid touching the bottom.
 function buildSigMesh() {
-  if (!P.sig_enabled || !P.sig_text || !svaseFont) return null;
+  if (P.sealed || !P.sig_enabled || !P.sig_text || !svaseFont) return null;
   const geom = new TextGeometry(P.sig_text, {
     font: svaseFont,
     size: P.sig_size,
@@ -1754,7 +1791,7 @@ async function thicknessColors(geom, partNo, nParts) {
 // sliders to show, so it must not be part of the key.
 let conCache = null;
 function getContainer() {
-  const key = JSON.stringify([...CONTAINER_KEYS.filter(k => k !== CP.solve).map(k => CP[k]), !!svaseFont, !!MF]);
+  const key = JSON.stringify([...CONTAINER_KEYS.filter(k => k !== CP.solve).map(k => CP[k]), !!svaseFont, !!MF, P.sealed]);
   if (conCache && conCache.key === key) return conCache.built;
   const { plan, parts } = buildContainer(CP);
   const textCuts = lidTextCutters(plan);
@@ -1818,7 +1855,7 @@ function solidifyContainerPart(part) {
 // engraving cut straight through the lid.
 function lidTextCutters(plan) {
   const text = (CP.lid_text || '').trim();
-  if (!text || !svaseFont) return [];
+  if (P.sealed || !text || !svaseFont) return [];
   const b = plan.box, T = b.lidT;
   const depth = Math.max(0.2, CP.lid_text_depth), m = 0.4;      // m: overshoot below the face
   const recess = CP.lid_text_mode === 'recess';
@@ -2064,9 +2101,10 @@ function updateSigBadge() {
   const gf = MODE.mode === 'gridfinity';
   const by = MODE.mode === 'bayonet';
   const co = MODE.mode === 'container';
-  const on = !gf && !by && !co && P.sig_enabled && P.sig_text && svaseFont;
+  const on = !gf && !by && !co && !P.sealed && P.sig_enabled && P.sig_text && svaseFont;
   badge.classList.toggle('off', !on);
-  txt.textContent = co ? '(none — container)'
+  txt.textContent = P.sealed ? '(sealed — no text)'
+    : co ? '(none — container)'
     : by ? '(none — bayonet)'
     : gf ? '(none — gridfinity)'
     : P.sig_enabled ? (P.sig_text || '(empty)')
@@ -2745,6 +2783,7 @@ function restoreSession(data) {
 
   // Refresh every visible slider and rebuild
   gui.controllersRecursive().forEach(c => c.updateDisplay());
+  if (typeof syncSealedUI === 'function') syncSealedUI();
   rebuild();
 }
 
@@ -2765,21 +2804,14 @@ hiddenFileInput.addEventListener('change', ev => {
 });
 document.body.appendChild(hiddenFileInput);
 
-const fSession = gui.addFolder('Session');
-fSession.add({ save: () => {
+// Session save/load live in the top bar (File menu) — see saveSession().
+function saveSession() {
   const data = snapshotSession();
-  const blob = new Blob([JSON.stringify(data, null, 2)],
-                        { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  a.href = url; a.download = `svase_session_${stamp}.json`; a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, `svase_session_${stamp}.json`);
   window.owTrack && owTrack('session_save', { wall_texture: P.wall_texture });
-}}, 'save').name('Save session (JSON)');
-
-fSession.add({ load: () => hiddenFileInput.click() }, 'load')
-        .name('Load session (JSON)');
+}
 
 // — Export STL with carved signature —
 // We build the text mesh, position it overlapping the bin's bottom
@@ -2790,7 +2822,7 @@ fSession.add({ load: () => hiddenFileInput.click() }, 'load')
 const exp = new STLExporter();
 
 function makeSigCarveGeometry() {
-  if (!P.sig_enabled || !P.sig_text || !svaseFont) return null;
+  if (P.sealed || !P.sig_enabled || !P.sig_text || !svaseFont) return null;
   // Total cutter height — overshoots the bin's bottom by `margin` so
   // the subtraction has a clean exit surface.
   const margin = 0.3;
@@ -2865,7 +2897,7 @@ async function prepareExportRoot(fmt) {
     sigGeom = (MODE.mode === 'gridfinity')
       ? null : makeSigCarveGeometry();
     if (!sigGeom) {
-      stats.textContent = 'signature disabled — exporting bin only';
+      stats.textContent = P.sealed ? 'sealed — no signature, exporting plain bin' : 'signature disabled — exporting bin only';
     } else {
       try {
         const t0 = performance.now();
@@ -3072,10 +3104,28 @@ async function export3MF() {
   }
 }
 
-expStlCtl = gui.add({ exportSTL }, 'exportSTL').name('Download STL (engraved)');
-if (MODE.mode === 'bayonet' || MODE.mode === 'container') expStlCtl.name('Download STL (print layout)');
-gui.add({ exportStepFile }, 'exportStepFile').name('Download STEP (faceted)');
-gui.add({ export3MF }, 'export3MF').name('Download 3MF (mm, multi-part)');
+// ── Top-bar menus (File / Export) ──
+const menuSTL = document.getElementById('mi-stl');
+expStlCtl = { name(t) { menuSTL.querySelector('b').textContent = t; return this; } };
+expStlCtl.name(MODE.mode === 'bayonet' || MODE.mode === 'container' ? 'Download STL (print layout)' : 'Download STL (engraved)');
+document.getElementById('mi-stl').onclick  = exportSTL;
+document.getElementById('mi-step').onclick = exportStepFile;
+document.getElementById('mi-3mf').onclick  = export3MF;
+document.getElementById('mi-save').onclick = saveSession;
+document.getElementById('mi-load').onclick = () => hiddenFileInput.click();
+const sealedBox = document.getElementById('mi-sealed');
+sealedBox.checked = !!P.sealed;
+sealedBox.onchange = () => { P.sealed = sealedBox.checked; updateSigBadge(); scheduleRebuild(); };
+const syncSealedUI = () => { sealedBox.checked = !!P.sealed; };
+document.querySelectorAll('.menu').forEach(m => {
+  const btn = m.querySelector('button.nav');
+  btn.onclick = e => { e.stopPropagation();
+    document.querySelectorAll('.menu.open').forEach(o => o !== m && o.classList.remove('open'));
+    m.classList.toggle('open'); };
+  m.querySelector('.menu-list').onclick = e => { if (e.target.closest('button')) m.classList.remove('open'); };
+});
+document.addEventListener('click', e => { if (!e.target.closest('.menu')) document.querySelectorAll('.menu.open').forEach(o => o.classList.remove('open')); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.menu.open').forEach(o => o.classList.remove('open')); });
 
 // ════════════════════════════════════════════════════════════
 //  RESIZE + RENDER LOOP

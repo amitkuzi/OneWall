@@ -72,8 +72,8 @@ ok((js.match(/(?<!function )makeSigCarveGeometry\(\)/g) || []).length === 1,
    'signature carve has exactly one call site');
 ok(/exportBaseName\(\) \+ '\.stl'/.test(js) && /name \+ '\.step'/.test(js),
    'both exports derive their filename from the shared stem');
-ok(/\.name\('Download STEP \(faceted\)'\)/.test(js),
-   'GUI button says "faceted" so nobody expects smooth NURBS');
+ok(/Download STEP \(faceted\)/.test(html),
+   'menu item says "faceted" so nobody expects smooth NURBS');
 ok(/owTrack\('step_export'/.test(js) || /trackExport\('step_export'/.test(js),
    'STEP export is tracked separately from STL');
 ok(/finally \{\s*disposeExportRoot\(prep\);/.test(js),
@@ -159,8 +159,8 @@ ok(/async function export3MF\(\)/.test(js), 'export3MF() defined');
 ok(/downloadBlob\(blob, name \+ '\.3mf'\)/.test(js),
    '3MF download derives its filename from the shared stem');
 ok(/type: 'model\/3mf'/.test(js), 'blob carries the 3MF MIME type');
-ok(/\.name\('Download 3MF \(mm, multi-part\)'\)/.test(js),
-   'GUI button says what 3MF buys over STL');
+ok(/Download 3MF<\/b><small>mm, multi-part/.test(html),
+   'menu item says what 3MF buys over STL');
 ok(/trackExport\('threemf_export'/.test(js),
    '3MF export is tracked separately');
 ok(/finally \{\s*disposeExportRoot\(prep\);[\s\S]{0,40}\}\s*\}\s*\n\s*gui\.add\(\{ exportSTL/.test(js)
@@ -183,7 +183,7 @@ ok(/container: \{ \.\.\.CP \}/.test(js) && /data\.container/.test(js), 'session 
 ok(/MODE\.mode === 'container' \? getContainer\(\) : getBayonet\(\)/.test(js), 'exports use the container parts');
 ok(/container_\$\{num\(b\.volume\)\}ml/.test(js), 'STL filename encodes volume and size');
 ok(js.includes('function lidTextCutters(plan)') && js.includes("add(CP, 'lid_text')"), 'lid text: cutter builder and GUI field present');
-ok(js.includes('!!svaseFont, !!MF]);'), 'lid text: cache key rebuilds when the font or the geometry engine finishes loading');
+ok(js.includes('!!svaseFont, !!MF, P.sealed]);'), 'lid text: cache key rebuilds when the font or the geometry engine finishes loading');
 ok(js.includes('g.rotateX(Math.PI)'), 'lid text: rotated about X so it reads from above on the closed jar');
 
 // Container sessions must restore the calculated-field lock as well as values.
