@@ -72,6 +72,10 @@ ok((js.match(/(?<!function )makeSigCarveGeometry\(\)/g) || []).length === 1,
    'signature carve has exactly one call site');
 ok(/exportBaseName\(\) \+ '\.stl'/.test(js) && /name \+ '\.step'/.test(js),
    'both exports derive their filename from the shared stem');
+ok(/id="mi-fname"/.test(html) && /function customExportName\(\)/.test(js),
+   'Export menu has a custom file-name field');
+ok(/return custom \|\| autoExportBaseName\(\)/.test(js),
+   'blank custom name falls back to the automatic stem');
 ok(/Download STEP \(faceted\)/.test(html),
    'menu item says "faceted" so nobody expects smooth NURBS');
 ok(/owTrack\('step_export'/.test(js) || /trackExport\('step_export'/.test(js),

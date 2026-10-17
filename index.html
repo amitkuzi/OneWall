@@ -151,6 +151,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   .menu-list small { display: block; color: var(--muted); font-size: 11px; }
   .menu-list hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
   .menu-check input { margin-top: 2px; }
+  .menu-name { display: block; padding: 6px 12px; }
+  .menu-name b { display: block; font-weight: 600; font-size: 12px; }
+  .menu-name input { width: 100%; box-sizing: border-box; margin-top: 3px; padding: 4px 6px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--border); border-radius: 4px; }
   #header .lang {
     min-width: 44px; font-variant: small-caps;
   }
@@ -340,7 +343,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="brand">
     <span class="logo"><span class="one">One</span>Wall</span>
     <span class="tagline" data-i18n="tagline">Vase-Mode Containers &amp; Gridfinity Bins / Baseplates</span>
-    <span class="ver">v0.1-1016-113413</span>
+    <span class="ver">v0.2-1017-154851</span>
   </div>
   <div id="mode-tabs" role="tablist" aria-label="Mode"></div>
   <nav>
@@ -355,6 +358,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <button class="nav primary" aria-haspopup="true">Export ▾</button>
       <div class="menu-list" role="menu">
         <label class="menu-check"><input type="checkbox" id="mi-sealed"> <span><b>Sealed — no text / signature</b><small>Plain part, no engraving; airtight container</small></span></label>
+        <label class="menu-name"><b>File name</b><input type="text" id="mi-fname" maxlength="80" placeholder="auto" autocomplete="off" spellcheck="false"><small>Blank = automatic name; extension is added</small></label>
         <hr>
         <button id="mi-stl" role="menuitem"><b>Download STL</b><small>Print-ready mesh</small></button>
         <button id="mi-step" role="menuitem"><b>Download STEP (faceted)</b><small>For CAD</small></button>
@@ -2959,6 +2963,23 @@ function disposeExportRoot({ carvedMesh, sigGeom, owned }) {
 // Filename stem, shared by both writers so an STL and a STEP of the
 // same configuration sit next to each other with matching names.
 function exportBaseName() {
+  const custom = customExportName();
+  return custom || autoExportBaseName();
+}
+
+// User-chosen name from the Export menu: strip any extension we add
+// ourselves plus characters illegal in Windows/macOS file names.
+function customExportName() {
+  const el = document.getElementById('mi-fname');
+  if (!el) return '';
+  return el.value.trim()
+    .replace(/\.(stl|step|stp|3mf)$/i, '')
+    .replace(/[\/:*?"<>|\x00-\x1f]/g, '_')
+    .replace(/^\.+|[. ]+$/g, '')
+    .slice(0, 80);
+}
+
+function autoExportBaseName() {
   const gfSuffix = (GP.style === 'lite' ? '_lite' : '');
   // Fractional cell counts carry float noise from the slider — trim
   // them so the filename reads 3.5, not 3.5000000000000004.

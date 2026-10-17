@@ -16,7 +16,7 @@
 $ErrorActionPreference = 'Stop'
 
 # Product version (bump manually for real releases)
-$base  = 'v0.1'
+$base  = 'v0.2'
 $ts    = Get-Date -Format 'MMdd-HHmmss'
 $stamp = "${base}-${ts}"
 
@@ -43,7 +43,7 @@ $verPattern  = '<span class="ver">[^<]+</span>'
 $verReplace  = "<span class=`"ver`">$stamp</span>"
 
 # Match "OneWall ` v0.1[trailing]" where ` is the middle dot.
-$footPattern = "OneWall $middot v0\.1[A-Za-z0-9\-]*"
+$footPattern = "OneWall $middot v0\.[0-9]+[A-Za-z0-9\-]*"
 $footReplace = "OneWall $middot $stamp"
 
 $content = $content -replace $verPattern,  $verReplace
